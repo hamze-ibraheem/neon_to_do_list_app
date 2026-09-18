@@ -29,5 +29,7 @@ xcuserdata/
 *.xcworkspace/xcuserdata/
 DerivedData/
 *.dSYM.zip
-*.dSYM
+# CocoaPods
+**/Pods/
+Pods/
 

@@ -15,4 +15,13 @@ echo "Commit: $CI_COMMIT"
 # Verify Xcode version
 xcodebuild -version
 
+# Run pod install if CocoaPods is configured
+if [ -f "ios/Podfile" ]; then
+    echo "=== Running pod install for CocoaPods ==="
+    cd ios && pod install && cd ..
+elif [ -f "Podfile" ]; then
+    echo "=== Running pod install for CocoaPods ==="
+    pod install
+fi
+
 echo "=== [Xcode Cloud] Post-Clone Complete ==="
