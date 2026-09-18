@@ -33,15 +33,17 @@ class MainActivity : Activity() {
   }
 
   companion object {
-    private const val BASE_URL = "http://localhost:8080"
+    private const val BASE_URL = "https://custom-frameworks-neon-framework.iix8qf.easypanel.host"
   }
 
   private fun fetchUiTree() {
     thread {
       try {
-        // Connect to localhost:8080 (via adb reverse)
-        val url = URL("$BASE_URL/api/tree")
+        val cleanBaseUrl = BASE_URL.trimEnd('/')
+        val url = URL("$cleanBaseUrl/api/tree")
         val connection = url.openConnection() as HttpURLConnection
+        connection.connectTimeout = 10000
+        connection.readTimeout = 15000
         connection.requestMethod = "GET"
 
         val reader = BufferedReader(InputStreamReader(connection.inputStream))
@@ -75,8 +77,11 @@ class MainActivity : Activity() {
   private fun sendAction(id: String, index: Int? = null, value: Any? = null) {
     thread {
       try {
-        val url = URL("$BASE_URL/action")
+        val cleanBaseUrl = BASE_URL.trimEnd('/')
+        val url = URL("$cleanBaseUrl/action")
         val connection = url.openConnection() as HttpURLConnection
+        connection.connectTimeout = 10000
+        connection.readTimeout = 15000
         connection.requestMethod = "POST"
         connection.doOutput = true
         connection.setRequestProperty("Content-Type", "application/json")
@@ -367,12 +372,18 @@ class MainActivity : Activity() {
         loading.text = "Loading Remote..."
         root.addView(loading)
         
-        val urlStr = node.optString("url")
+        var urlStr = node.optString("url")
+        if (urlStr.contains("localhost:8080") || urlStr.contains("127.0.0.1:8080")) {
+          urlStr = urlStr.replace("http://localhost:8080", BASE_URL.trimEnd('/'))
+                         .replace("http://127.0.0.1:8080", BASE_URL.trimEnd('/'))
+        }
         if (urlStr.isNotEmpty()) {
           thread {
             try {
               val url = URL(urlStr)
               val conn = url.openConnection() as HttpURLConnection
+              conn.connectTimeout = 10000
+              conn.readTimeout = 15000
               val reader = BufferedReader(InputStreamReader(conn.inputStream))
               val resp = reader.readText()
               val remoteJson = JSONObject(resp)
