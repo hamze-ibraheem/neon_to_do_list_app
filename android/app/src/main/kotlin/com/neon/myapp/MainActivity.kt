@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -18,22 +19,946 @@ import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
 
+  companion object {
+    private const val BASE_URL = "https://custom-frameworks-neon-framework.iix8qf.easypanel.host"
+    // Set to false for 100% standalone, offline-capable release APK with zero localhost dependency.
+    private const val USE_REMOTE_SERVER = false
+  }
+
+  // In-Memory & Persistent State for To-Do List App (Neon Task Studio)
+  data class TodoItemData(
+    val id: String,
+    val title: String,
+    var isCompleted: Boolean,
+    val priority: String, // "low", "medium", "high"
+    val category: String, // "Work", "Personal", etc.
+    val createdAt: Long = System.currentTimeMillis()
+  )
+
+  private var todoTasks = mutableListOf<TodoItemData>()
+  private var newTaskTitle = ""
+  private var selectedPriority = "medium"
+  private var selectedCategory = "Work"
+  private var filterStatus = "all" // "all", "active", "completed"
+  private var activeCategoryFilter = "All"
+  private val categories = listOf("Work", "Personal", "Study", "Shopping", "Health")
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
 
-    // Show a "Loading" screen initially
-    val loadingText = TextView(this)
-    loadingText.text = "Connecting to Neon Engine..."
-    loadingText.gravity = Gravity.CENTER
-    loadingText.textSize = 20f
-    setContentView(loadingText)
+    loadLocalTasks()
 
-    // Start fetching UI from Dart
-    fetchUiTree()
+    if (USE_REMOTE_SERVER) {
+      val loadingText = TextView(this)
+      loadingText.text = "Connecting to Neon Engine..."
+      loadingText.gravity = Gravity.CENTER
+      loadingText.textSize = 20f
+      setContentView(loadingText)
+      fetchUiTree()
+    } else {
+      renderLocalTree()
+    }
   }
 
-  companion object {
-    private const val BASE_URL = "https://custom-frameworks-neon-framework.iix8qf.easypanel.host"
+  private fun loadLocalTasks() {
+    val prefs = getSharedPreferences("neon_todo_prefs", MODE_PRIVATE)
+    val raw = prefs.getString("tasks_json", null)
+    if (raw != null) {
+      try {
+        val array = JSONArray(raw)
+        todoTasks.clear()
+        for (i in 0 until array.length()) {
+          val obj = array.getJSONObject(i)
+          todoTasks.add(
+            TodoItemData(
+              id = obj.getString("id"),
+              title = obj.getString("title"),
+              isCompleted = obj.getBoolean("isCompleted"),
+              priority = obj.optString("priority", "medium"),
+              category = obj.optString("category", "Work"),
+              createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+            )
+          )
+        }
+        if (todoTasks.isNotEmpty()) return
+      } catch (e: Exception) {
+        e.printStackTrace()
+      }
+    }
+    // Default initial tasks matching todo_screen.dart
+    todoTasks = mutableListOf(
+      TodoItemData("task_1", "Explore Neon Framework architecture", true, "high", "Work"),
+      TodoItemData("task_2", "Build custom mobile app with Neon SDK", false, "high", "Work"),
+      TodoItemData("task_3", "Design native Android bridge and UI tree", false, "medium", "Study"),
+      TodoItemData("task_4", "Review local storage & networking layers", false, "low", "Personal")
+    )
+  }
+
+  private fun saveLocalTasks() {
+    val prefs = getSharedPreferences("neon_todo_prefs", MODE_PRIVATE)
+    val array = JSONArray()
+    for (t in todoTasks) {
+      val obj = JSONObject()
+      obj.put("id", t.id)
+      obj.put("title", t.title)
+      obj.put("isCompleted", t.isCompleted)
+      obj.put("priority", t.priority)
+      obj.put("category", t.category)
+      obj.put("createdAt", t.createdAt)
+      array.put(obj)
+    }
+    prefs.edit().putString("tasks_json", array.toString()).apply()
+  }
+
+  private fun renderLocalTree() {
+    val tree = buildTodoTree()
+    val rootView = renderWidget(tree)
+    rootView.layoutParams = ViewGroup.LayoutParams(
+      ViewGroup.LayoutParams.MATCH_PARENT,
+      ViewGroup.LayoutParams.MATCH_PARENT
+    )
+    setContentView(rootView)
+  }
+
+  private fun buildTodoTree(): JSONObject {
+    val totalCount = todoTasks.size
+    val completedCount = todoTasks.count { it.isCompleted }
+    val activeCount = totalCount - completedCount
+    val progress = if (totalCount > 0) completedCount.toDouble() / totalCount.toDouble() else 0.0
+    val percentInt = (progress * 100).toInt()
+
+    val filteredList = todoTasks.filter { task ->
+      if (filterStatus == "active" && task.isCompleted) return@filter false
+      if (filterStatus == "completed" && !task.isCompleted) return@filter false
+      if (activeCategoryFilter != "All" && task.category != activeCategoryFilter) return@filter false
+      true
+    }
+
+    val root = JSONObject().apply {
+      put("id", "root")
+      put("type", "Column")
+      put("sourceType", "TodoApp")
+      put("axis", "vertical")
+    }
+
+    val rootChildren = JSONArray()
+
+    // 1. AppBar
+    val appBar = JSONObject().apply {
+      put("id", "appbar_todo")
+      put("type", "AppBar")
+      put("sourceType", "AppBar")
+      put("variant", "small")
+      put("title", "Neon Task Studio")
+      val actions = JSONArray()
+      val badge = JSONObject().apply {
+        put("type", "Badge")
+        put("label", "$activeCount")
+      }
+      actions.put(badge)
+      put("actions", actions)
+      put("children", JSONArray())
+    }
+    rootChildren.put(appBar)
+
+    // 2. Expanded Container with ScrollView
+    val expanded = JSONObject().apply {
+      put("id", "root.1")
+      put("type", "Expanded")
+      put("sourceType", "Expanded")
+      put("flex", 1)
+
+      val expChildren = JSONArray()
+      val container = JSONObject().apply {
+        put("id", "root.1.0")
+        put("type", "Container")
+        put("sourceType", "Container")
+        put("color", 0xFFF1F5F9.toLong())
+        put("padding_top", 12.0)
+        put("padding_bottom", 12.0)
+        put("padding_left", 16.0)
+        put("padding_right", 16.0)
+
+        val contChildren = JSONArray()
+        val scrollView = JSONObject().apply {
+          put("id", "root.1.0.0")
+          put("type", "SingleChildScrollView")
+          put("sourceType", "SingleChildScrollView")
+          put("scrollDirection", "vertical")
+          put("padding_bottom", 24.0)
+
+          val scrollChildren = JSONArray()
+          val col = JSONObject().apply {
+            put("id", "root.1.0.0.0")
+            put("type", "Column")
+            put("sourceType", "Column")
+            put("axis", "vertical")
+
+            val items = JSONArray()
+
+            // Card 1: Progress Overview Card
+            val cardProg = JSONObject().apply {
+              put("id", "card_progress")
+              put("type", "Card")
+              put("sourceType", "Card")
+              put("variant", "elevated")
+              put("borderRadius", 14.0)
+              put("color", 0xFFFFFFFF.toLong())
+              put("padding_top", 16.0)
+              put("padding_bottom", 16.0)
+              put("padding_left", 16.0)
+              put("padding_right", 16.0)
+
+              val cpChildren = JSONArray()
+              val cpCol = JSONObject().apply {
+                put("id", "card_progress.0")
+                put("type", "Column")
+                put("axis", "vertical")
+                val cpItems = JSONArray()
+
+                val rowHeader = JSONObject().apply {
+                  put("id", "card_progress.0.0")
+                  put("type", "Row")
+                  put("axis", "horizontal")
+                  val rItems = JSONArray()
+                  rItems.put(JSONObject().apply {
+                    put("id", "card_progress.0.0.0")
+                    put("type", "Text")
+                    put("text", "Progress Overview")
+                    put("fontSize", 16.0)
+                    put("fontWeight", "bold")
+                    put("color", 0xFF1E293B.toLong())
+                    put("children", JSONArray())
+                  })
+                  rItems.put(JSONObject().apply {
+                    put("id", "card_progress.0.0.1")
+                    put("type", "Text")
+                    put("text", "$percentInt% done ($completedCount/$totalCount)")
+                    put("fontSize", 13.0)
+                    put("fontWeight", "bold")
+                    put("color", 0xFF4F46E5.toLong())
+                    put("children", JSONArray())
+                  })
+                  put("children", rItems)
+                }
+                cpItems.put(rowHeader)
+
+                cpItems.put(JSONObject().apply {
+                  put("id", "card_progress.0.1")
+                  put("type", "SizedBox")
+                  put("height", 10.0)
+                  put("children", JSONArray())
+                })
+
+                cpItems.put(JSONObject().apply {
+                  put("id", "progress_bar")
+                  put("type", "LinearProgressIndicator")
+                  put("value", progress)
+                  put("minHeight", 8.0)
+                  put("borderRadius", 4.0)
+                  put("color", 0xFF4F46E5.toLong())
+                  put("backgroundColor", 0xFFE2E8F0.toLong())
+                  put("children", JSONArray())
+                })
+
+                cpItems.put(JSONObject().apply {
+                  put("id", "card_progress.0.3")
+                  put("type", "SizedBox")
+                  put("height", 12.0)
+                  put("children", JSONArray())
+                })
+
+                val rowCounts = JSONObject().apply {
+                  put("id", "card_progress.0.4")
+                  put("type", "Row")
+                  put("axis", "horizontal")
+                  val cntItems = JSONArray()
+                  cntItems.put(JSONObject().apply {
+                    put("id", "card_progress.0.4.0")
+                    put("type", "Text")
+                    put("text", "Total: $totalCount")
+                    put("fontSize", 12.0)
+                    put("color", 0xFF64748B.toLong())
+                    put("children", JSONArray())
+                  })
+                  cntItems.put(JSONObject().apply {
+                    put("id", "card_progress.0.4.1")
+                    put("type", "Text")
+                    put("text", "Active: $activeCount")
+                    put("fontSize", 12.0)
+                    put("fontWeight", "bold")
+                    put("color", 0xFF0EA5E9.toLong())
+                    put("children", JSONArray())
+                  })
+                  cntItems.put(JSONObject().apply {
+                    put("id", "card_progress.0.4.2")
+                    put("type", "Text")
+                    put("text", "Done: $completedCount")
+                    put("fontSize", 12.0)
+                    put("fontWeight", "bold")
+                    put("color", 0xFF10B981.toLong())
+                    put("children", JSONArray())
+                  })
+                  put("children", cntItems)
+                }
+                cpItems.put(rowCounts)
+                put("children", cpItems)
+              }
+              cpChildren.put(cpCol)
+              put("children", cpChildren)
+            }
+            items.put(cardProg)
+
+            items.put(JSONObject().apply {
+              put("type", "SizedBox")
+              put("height", 16.0)
+              put("children", JSONArray())
+            })
+
+            // Card 2: Create New Task Card
+            val cardAdd = JSONObject().apply {
+              put("id", "card_add_task")
+              put("type", "Card")
+              put("sourceType", "Card")
+              put("variant", "elevated")
+              put("borderRadius", 14.0)
+              put("color", 0xFFFFFFFF.toLong())
+              put("padding_top", 16.0)
+              put("padding_bottom", 16.0)
+              put("padding_left", 16.0)
+              put("padding_right", 16.0)
+
+              val caChildren = JSONArray()
+              val caCol = JSONObject().apply {
+                put("id", "card_add_task.0")
+                put("type", "Column")
+                put("axis", "vertical")
+                val caItems = JSONArray()
+
+                caItems.put(JSONObject().apply {
+                  put("id", "card_add_task.0.0")
+                  put("type", "Text")
+                  put("text", "Create New Task")
+                  put("fontSize", 16.0)
+                  put("fontWeight", "bold")
+                  put("color", 0xFF1E293B.toLong())
+                  put("children", JSONArray())
+                })
+
+                caItems.put(JSONObject().apply {
+                  put("type", "SizedBox")
+                  put("height", 10.0)
+                  put("children", JSONArray())
+                })
+
+                caItems.put(JSONObject().apply {
+                  put("id", "tf_new_task")
+                  put("type", "TextField")
+                  put("variant", "outlined")
+                  put("value", newTaskTitle)
+                  put("labelText", "Task Description")
+                  put("hintText", "e.g. Test iOS native bridge...")
+                  put("children", JSONArray())
+                })
+
+                caItems.put(JSONObject().apply {
+                  put("type", "SizedBox")
+                  put("height", 12.0)
+                  put("children", JSONArray())
+                })
+
+                caItems.put(JSONObject().apply {
+                  put("type", "Text")
+                  put("text", "Priority:")
+                  put("fontSize", 12.0)
+                  put("fontWeight", "bold")
+                  put("color", 0xFF64748B.toLong())
+                  put("children", JSONArray())
+                })
+
+                val prioRow = JSONObject().apply {
+                  put("id", "card_add_task.0.6")
+                  put("type", "Row")
+                  put("axis", "horizontal")
+                  val prItems = JSONArray()
+                  val prios = listOf("low" to "Low", "medium" to "Medium", "high" to "High")
+                  for ((pKey, pLabel) in prios) {
+                    prItems.put(JSONObject().apply {
+                      put("id", "chip_prio_$pKey")
+                      put("type", "FilterChip")
+                      put("label", pLabel)
+                      put("selected", selectedPriority == pKey)
+                      put("children", JSONArray())
+                    })
+                    prItems.put(JSONObject().apply {
+                      put("type", "SizedBox")
+                      put("width", 8.0)
+                      put("children", JSONArray())
+                    })
+                  }
+                  put("children", prItems)
+                }
+                caItems.put(prioRow)
+
+                caItems.put(JSONObject().apply {
+                  put("type", "SizedBox")
+                  put("height", 12.0)
+                  put("children", JSONArray())
+                })
+
+                caItems.put(JSONObject().apply {
+                  put("type", "Text")
+                  put("text", "Category:")
+                  put("fontSize", 12.0)
+                  put("fontWeight", "bold")
+                  put("color", 0xFF64748B.toLong())
+                  put("children", JSONArray())
+                })
+
+                val catRow = JSONObject().apply {
+                  put("id", "card_add_task.0.10")
+                  put("type", "Row")
+                  put("axis", "horizontal")
+                  val catItems = JSONArray()
+                  for (cat in categories) {
+                    catItems.put(JSONObject().apply {
+                      put("id", "chip_cat_$cat")
+                      put("type", "FilterChip")
+                      put("label", cat)
+                      put("selected", selectedCategory == cat)
+                      put("children", JSONArray())
+                    })
+                    catItems.put(JSONObject().apply {
+                      put("type", "SizedBox")
+                      put("width", 6.0)
+                      put("children", JSONArray())
+                    })
+                  }
+                  put("children", catItems)
+                }
+                caItems.put(catRow)
+
+                caItems.put(JSONObject().apply {
+                  put("type", "SizedBox")
+                  put("height", 14.0)
+                  put("children", JSONArray())
+                })
+
+                val submitBtn = JSONObject().apply {
+                  put("id", "btn_submit_task")
+                  put("type", "Container")
+                  put("sourceType", "Button")
+                  put("color", 0xFF4F46E5.toLong())
+                  put("isButton", true)
+                  put("padding_top", 12.0)
+                  put("padding_bottom", 12.0)
+                  put("padding_left", 16.0)
+                  put("padding_right", 16.0)
+                  val btnChildren = JSONArray()
+                  btnChildren.put(JSONObject().apply {
+                    put("id", "btn_submit_task.0")
+                    put("type", "Text")
+                    put("text", "+ Add Task to List")
+                    put("color", 0xFFFFFFFF.toLong())
+                    put("fontWeight", "bold")
+                    put("children", JSONArray())
+                  })
+                  put("children", btnChildren)
+                }
+                caItems.put(submitBtn)
+
+                put("children", caItems)
+              }
+              caChildren.put(caCol)
+              put("children", caChildren)
+            }
+            items.put(cardAdd)
+
+            items.put(JSONObject().apply {
+              put("type", "SizedBox")
+              put("height", 16.0)
+              put("children", JSONArray())
+            })
+
+            // Card 3: Filter Controls Card
+            val cardFilt = JSONObject().apply {
+              put("id", "card_filters")
+              put("type", "Card")
+              put("sourceType", "Card")
+              put("variant", "elevated")
+              put("borderRadius", 14.0)
+              put("color", 0xFFFFFFFF.toLong())
+              put("padding_top", 10.0)
+              put("padding_bottom", 10.0)
+              put("padding_left", 14.0)
+              put("padding_right", 14.0)
+
+              val cfChildren = JSONArray()
+              val cfCol = JSONObject().apply {
+                put("id", "card_filters.0")
+                put("type", "Column")
+                put("axis", "vertical")
+                val cfItems = JSONArray()
+
+                val sfRow = JSONObject().apply {
+                  put("id", "card_filters.0.0")
+                  put("type", "Row")
+                  put("axis", "horizontal")
+                  val sfItems = JSONArray()
+                  val statuses = listOf(
+                    Triple("all", "All ($totalCount)", filterStatus == "all"),
+                    Triple("active", "Active ($activeCount)", filterStatus == "active"),
+                    Triple("done", "Done ($completedCount)", filterStatus == "completed")
+                  )
+                  for ((sKey, sLabel, sSel) in statuses) {
+                    sfItems.put(JSONObject().apply {
+                      put("id", "filter_status_$sKey")
+                      put("type", "FilterChip")
+                      put("label", sLabel)
+                      put("selected", sSel)
+                      put("children", JSONArray())
+                    })
+                    sfItems.put(JSONObject().apply {
+                      put("type", "SizedBox")
+                      put("width", 8.0)
+                      put("children", JSONArray())
+                    })
+                  }
+                  put("children", sfItems)
+                }
+                cfItems.put(sfRow)
+
+                cfItems.put(JSONObject().apply {
+                  put("type", "SizedBox")
+                  put("height", 8.0)
+                  put("children", JSONArray())
+                })
+
+                val tagRow = JSONObject().apply {
+                  put("id", "card_filters.0.2")
+                  put("type", "Row")
+                  put("axis", "horizontal")
+                  val tagItems = JSONArray()
+                  tagItems.put(JSONObject().apply {
+                    put("id", "filter_cat_all")
+                    put("type", "FilterChip")
+                    put("label", "🏷️ All Tags")
+                    put("selected", activeCategoryFilter == "All")
+                    put("children", JSONArray())
+                  })
+                  tagItems.put(JSONObject().apply {
+                    put("type", "SizedBox")
+                    put("width", 6.0)
+                    put("children", JSONArray())
+                  })
+                  for (cat in categories) {
+                    tagItems.put(JSONObject().apply {
+                      put("id", "filter_cat_$cat")
+                      put("type", "FilterChip")
+                      put("label", cat)
+                      put("selected", activeCategoryFilter == cat)
+                      put("children", JSONArray())
+                    })
+                    tagItems.put(JSONObject().apply {
+                      put("type", "SizedBox")
+                      put("width", 6.0)
+                      put("children", JSONArray())
+                    })
+                  }
+                  put("children", tagItems)
+                }
+                cfItems.put(tagRow)
+
+                put("children", cfItems)
+              }
+              cfChildren.put(cfCol)
+              put("children", cfChildren)
+            }
+            items.put(cardFilt)
+
+            items.put(JSONObject().apply {
+              put("type", "SizedBox")
+              put("height", 16.0)
+              put("children", JSONArray())
+            })
+
+            // Row 4: Tasks (N) Header + Actions
+            val taskHeader = JSONObject().apply {
+              put("id", "root.1.0.0.0.6")
+              put("type", "Row")
+              put("axis", "horizontal")
+              val thItems = JSONArray()
+              thItems.put(JSONObject().apply {
+                put("id", "root.1.0.0.0.6.0")
+                put("type", "Text")
+                put("text", "Tasks (${filteredList.size})")
+                put("fontSize", 18.0)
+                put("fontWeight", "bold")
+                put("color", 0xFF1E293B.toLong())
+                put("children", JSONArray())
+              })
+
+              val actionsRow = JSONObject().apply {
+                put("id", "root.1.0.0.0.6.1")
+                put("type", "Row")
+                put("axis", "horizontal")
+                val actItems = JSONArray()
+
+                val toggleText = if (activeCount == 0) "Reset" else "Check All"
+                actItems.put(JSONObject().apply {
+                  put("id", "btn_toggle_all_tasks")
+                  put("type", "Container")
+                  put("sourceType", "Button")
+                  put("color", 0xFF64748B.toLong())
+                  put("isButton", true)
+                  put("padding_top", 8.0)
+                  put("padding_bottom", 8.0)
+                  put("padding_left", 12.0)
+                  put("padding_right", 12.0)
+                  val btnChild = JSONArray()
+                  btnChild.put(JSONObject().apply {
+                    put("type", "Text")
+                    put("text", toggleText)
+                    put("color", 0xFFFFFFFF.toLong())
+                    put("fontSize", 12.0)
+                    put("children", JSONArray())
+                  })
+                  put("children", btnChild)
+                })
+
+                actItems.put(JSONObject().apply {
+                  put("type", "SizedBox")
+                  put("width", 8.0)
+                  put("children", JSONArray())
+                })
+
+                actItems.put(JSONObject().apply {
+                  put("id", "btn_clear_completed_tasks")
+                  put("type", "Container")
+                  put("sourceType", "Button")
+                  put("color", 0xFFEF4444.toLong())
+                  put("isButton", true)
+                  put("padding_top", 8.0)
+                  put("padding_bottom", 8.0)
+                  put("padding_left", 12.0)
+                  put("padding_right", 12.0)
+                  val btnChild = JSONArray()
+                  btnChild.put(JSONObject().apply {
+                    put("type", "Text")
+                    put("text", "Clear Done")
+                    put("color", 0xFFFFFFFF.toLong())
+                    put("fontSize", 12.0)
+                    put("children", JSONArray())
+                  })
+                  put("children", btnChild)
+                })
+
+                put("children", actItems)
+              }
+              thItems.put(actionsRow)
+              put("children", thItems)
+            }
+            items.put(taskHeader)
+
+            items.put(JSONObject().apply {
+              put("type", "SizedBox")
+              put("height", 10.0)
+              put("children", JSONArray())
+            })
+
+            // 5. Tasks List or Empty State
+            if (filteredList.isEmpty()) {
+              val cardEmpty = JSONObject().apply {
+                put("id", "card_empty_state")
+                put("type", "Card")
+                put("sourceType", "Card")
+                put("variant", "elevated")
+                put("borderRadius", 14.0)
+                put("color", 0xFFFFFFFF.toLong())
+                put("padding_top", 32.0)
+                put("padding_bottom", 32.0)
+                put("padding_left", 32.0)
+                put("padding_right", 32.0)
+                val ceChildren = JSONArray()
+                val ceCol = JSONObject().apply {
+                  put("type", "Column")
+                  put("axis", "vertical")
+                  val ceItems = JSONArray()
+                  ceItems.put(JSONObject().apply {
+                    put("type", "Text")
+                    put("text", "🎉")
+                    put("fontSize", 36.0)
+                    put("children", JSONArray())
+                  })
+                  ceItems.put(JSONObject().apply {
+                    put("type", "SizedBox")
+                    put("height", 8.0)
+                    put("children", JSONArray())
+                  })
+                  ceItems.put(JSONObject().apply {
+                    put("type", "Text")
+                    put("text", "No Tasks Found")
+                    put("fontSize", 16.0)
+                    put("fontWeight", "bold")
+                    put("color", 0xFF1E293B.toLong())
+                    put("children", JSONArray())
+                  })
+                  ceItems.put(JSONObject().apply {
+                    put("type", "SizedBox")
+                    put("height", 4.0)
+                    put("children", JSONArray())
+                  })
+                  val hintMsg = if (todoTasks.isEmpty()) "Add your first task above to get started!" else "Try changing your status or category filters."
+                  ceItems.put(JSONObject().apply {
+                    put("type", "Text")
+                    put("text", hintMsg)
+                    put("fontSize", 13.0)
+                    put("color", 0xFF64748B.toLong())
+                    put("children", JSONArray())
+                  })
+                  put("children", ceItems)
+                }
+                ceChildren.put(ceCol)
+                put("children", ceChildren)
+              }
+              items.put(cardEmpty)
+            } else {
+              val taskCol = JSONObject().apply {
+                put("id", "root.1.0.0.0.8")
+                put("type", "Column")
+                put("axis", "vertical")
+                val tItems = JSONArray()
+                for (item in filteredList) {
+                  val taskCard = JSONObject().apply {
+                    put("id", "card_task_${item.id}")
+                    put("type", "Card")
+                    put("sourceType", "Card")
+                    put("variant", "elevated")
+                    put("borderRadius", 12.0)
+                    val cardBg = if (item.isCompleted) 0xFFF8FAFC.toLong() else 0xFFFFFFFF.toLong()
+                    put("color", cardBg)
+                    put("padding_top", 10.0)
+                    put("padding_bottom", 10.0)
+                    put("padding_left", 12.0)
+                    put("padding_right", 12.0)
+
+                    val tcChildren = JSONArray()
+                    val tRow = JSONObject().apply {
+                      put("id", "card_task_${item.id}.0")
+                      put("type", "Row")
+                      put("axis", "horizontal")
+                      val trItems = JSONArray()
+
+                      // Checkbox
+                      trItems.put(JSONObject().apply {
+                        put("id", "cb_task_${item.id}")
+                        put("type", "Checkbox")
+                        put("value", item.isCompleted)
+                        put("enabled", true)
+                        put("children", JSONArray())
+                      })
+
+                      trItems.put(JSONObject().apply {
+                        put("type", "SizedBox")
+                        put("width", 12.0)
+                        put("children", JSONArray())
+                      })
+
+                      // Expanded Task Details
+                      val expDetails = JSONObject().apply {
+                        put("type", "Expanded")
+                        put("flex", 1)
+                        val edChildren = JSONArray()
+                        val edCol = JSONObject().apply {
+                          put("type", "Column")
+                          put("axis", "vertical")
+                          val edItems = JSONArray()
+
+                          val titleText = if (item.isCompleted) "✓ ${item.title}" else item.title
+                          val titleColor = if (item.isCompleted) 0xFF94A3B8.toLong() else 0xFF0F172A.toLong()
+                          val titleWeight = if (item.isCompleted) "normal" else "bold"
+                          edItems.put(JSONObject().apply {
+                            put("type", "Text")
+                            put("text", titleText)
+                            put("fontSize", 15.0)
+                            put("fontWeight", titleWeight)
+                            put("color", titleColor)
+                            put("children", JSONArray())
+                          })
+
+                          edItems.put(JSONObject().apply {
+                            put("type", "SizedBox")
+                            put("height", 4.0)
+                            put("children", JSONArray())
+                          })
+
+                          val subRow = JSONObject().apply {
+                            put("type", "Row")
+                            put("axis", "horizontal")
+                            val srItems = JSONArray()
+                            val prioBadge = when (item.priority) {
+                              "high" -> "🔴 High"
+                              "low" -> "🟢 Low"
+                              else -> "🟡 Med"
+                            }
+                            srItems.put(JSONObject().apply {
+                              put("type", "Text")
+                              put("text", prioBadge)
+                              put("fontSize", 11.0)
+                              put("fontWeight", "bold")
+                              put("color", 0xFF475569.toLong())
+                              put("children", JSONArray())
+                            })
+                            srItems.put(JSONObject().apply {
+                              put("type", "SizedBox")
+                              put("width", 8.0)
+                              put("children", JSONArray())
+                            })
+                            srItems.put(JSONObject().apply {
+                              put("type", "Text")
+                              put("text", "🏷️ ${item.category}")
+                              put("fontSize", 11.0)
+                              put("color", 0xFF64748B.toLong())
+                              put("children", JSONArray())
+                            })
+                            put("children", srItems)
+                          }
+                          edItems.put(subRow)
+
+                          put("children", edItems)
+                        }
+                        edChildren.put(edCol)
+                        put("children", edChildren)
+                      }
+                      trItems.put(expDetails)
+
+                      trItems.put(JSONObject().apply {
+                        put("type", "SizedBox")
+                        put("width", 8.0)
+                        put("children", JSONArray())
+                      })
+
+                      // Delete Button (✕)
+                      val delBtn = JSONObject().apply {
+                        put("id", "btn_del_${item.id}")
+                        put("type", "Container")
+                        put("sourceType", "Button")
+                        put("color", 0xFFFEE2E2.toLong())
+                        put("isButton", true)
+                        put("padding_top", 6.0)
+                        put("padding_bottom", 6.0)
+                        put("padding_left", 10.0)
+                        put("padding_right", 10.0)
+                        val dbChildren = JSONArray()
+                        dbChildren.put(JSONObject().apply {
+                          put("type", "Text")
+                          put("text", "✕")
+                          put("fontSize", 12.0)
+                          put("fontWeight", "bold")
+                          put("color", 0xFFDC2626.toLong())
+                          put("children", JSONArray())
+                        })
+                        put("children", dbChildren)
+                      }
+                      trItems.put(delBtn)
+
+                      put("children", trItems)
+                    }
+                    tcChildren.put(tRow)
+                    put("children", tcChildren)
+                  }
+                  tItems.put(taskCard)
+                  tItems.put(JSONObject().apply {
+                    put("type", "SizedBox")
+                    put("height", 8.0)
+                    put("children", JSONArray())
+                  })
+                }
+                put("children", tItems)
+              }
+              items.put(taskCol)
+            }
+
+            put("children", items)
+          }
+          scrollChildren.put(col)
+          put("children", scrollChildren)
+        }
+        contChildren.put(scrollView)
+        put("children", contChildren)
+      }
+      expChildren.put(container)
+      put("children", expChildren)
+    }
+    rootChildren.put(expanded)
+
+    root.put("children", rootChildren)
+    return root
+  }
+
+  private fun handleLocalAction(id: String, value: Any? = null) {
+    runOnUiThread {
+      when {
+        id == "btn_submit_task" -> {
+          val title = newTaskTitle.trim()
+          if (title.isNotEmpty()) {
+            val newTask = TodoItemData(
+              id = "task_${System.currentTimeMillis()}",
+              title = title,
+              isCompleted = false,
+              priority = selectedPriority,
+              category = selectedCategory
+            )
+            todoTasks.add(0, newTask)
+            newTaskTitle = ""
+            saveLocalTasks()
+          }
+        }
+        id == "tf_new_task" -> {
+          newTaskTitle = value?.toString() ?: ""
+          return@runOnUiThread
+        }
+        id.startsWith("cb_task_") -> {
+          val taskId = id.removePrefix("cb_task_")
+          val task = todoTasks.find { it.id == taskId }
+          if (task != null) {
+            task.isCompleted = (value as? Boolean) ?: (!task.isCompleted)
+            saveLocalTasks()
+          }
+        }
+        id.startsWith("btn_del_") -> {
+          val taskId = id.removePrefix("btn_del_")
+          todoTasks.removeAll { it.id == taskId }
+          saveLocalTasks()
+        }
+        id == "btn_clear_completed_tasks" -> {
+          todoTasks.removeAll { it.isCompleted }
+          saveLocalTasks()
+        }
+        id == "btn_toggle_all_tasks" -> {
+          val hasUncompleted = todoTasks.any { !it.isCompleted }
+          todoTasks.forEach { it.isCompleted = hasUncompleted }
+          saveLocalTasks()
+        }
+        id == "chip_prio_low" -> selectedPriority = "low"
+        id == "chip_prio_med" -> selectedPriority = "medium"
+        id == "chip_prio_high" -> selectedPriority = "high"
+        id.startsWith("chip_cat_") -> selectedCategory = id.removePrefix("chip_cat_")
+        id == "filter_status_all" -> filterStatus = "all"
+        id == "filter_status_active" -> filterStatus = "active"
+        id == "filter_status_done" -> filterStatus = "completed"
+        id == "filter_cat_all" -> activeCategoryFilter = "All"
+        id.startsWith("filter_cat_") -> activeCategoryFilter = id.removePrefix("filter_cat_")
+      }
+
+      val newTree = buildTodoTree()
+      val rootView = renderWidget(newTree)
+      rootView.layoutParams = ViewGroup.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.MATCH_PARENT
+      )
+      setContentView(rootView)
+    }
   }
 
   private fun fetchUiTree() {
@@ -42,18 +967,22 @@ class MainActivity : Activity() {
         val cleanBaseUrl = BASE_URL.trimEnd('/')
         val url = URL("$cleanBaseUrl/api/tree")
         val connection = url.openConnection() as HttpURLConnection
-        connection.connectTimeout = 10000
-        connection.readTimeout = 15000
+        connection.connectTimeout = 8000
+        connection.readTimeout = 12000
         connection.requestMethod = "GET"
 
         val reader = BufferedReader(InputStreamReader(connection.inputStream))
         val response = reader.readText()
         reader.close()
 
-        // Parse JSON
         val rootNode = JSONObject(response)
+        val sourceType = rootNode.optString("sourceType")
+        // If remote server returns framework showcase instead of TodoApp, use standalone local TodoApp!
+        if (sourceType == "ShowcaseApp") {
+          runOnUiThread { renderLocalTree() }
+          return@thread
+        }
 
-        // Render on Main Thread
         runOnUiThread {
           val rootView = renderWidget(rootNode)
           rootView.layoutParams = ViewGroup.LayoutParams(
@@ -65,23 +994,25 @@ class MainActivity : Activity() {
 
       } catch (e: Exception) {
         runOnUiThread {
-          val errorView = TextView(this)
-          errorView.text = "Error connecting to Neon host:\n${e.message}\n\nHost: $BASE_URL"
-          errorView.setTextColor(Color.RED)
-          setContentView(errorView)
+          renderLocalTree()
         }
       }
     }
   }
 
   private fun sendAction(id: String, index: Int? = null, value: Any? = null) {
+    if (!USE_REMOTE_SERVER) {
+      handleLocalAction(id, value)
+      return
+    }
+
     thread {
       try {
         val cleanBaseUrl = BASE_URL.trimEnd('/')
         val url = URL("$cleanBaseUrl/action")
         val connection = url.openConnection() as HttpURLConnection
-        connection.connectTimeout = 10000
-        connection.readTimeout = 15000
+        connection.connectTimeout = 8000
+        connection.readTimeout = 12000
         connection.requestMethod = "POST"
         connection.doOutput = true
         connection.setRequestProperty("Content-Type", "application/json")
@@ -101,12 +1032,10 @@ class MainActivity : Activity() {
 
         val responseCode = connection.responseCode
         if (responseCode == 200) {
-          // Read the response JSON (contains updated widget tree)
           val reader = BufferedReader(InputStreamReader(connection.inputStream))
           val response = reader.readText()
           reader.close()
           
-          // Parse and re-render the updated tree
           val rootNode = JSONObject(response)
           runOnUiThread {
             val rootView = renderWidget(rootNode)
@@ -116,9 +1045,11 @@ class MainActivity : Activity() {
             )
             setContentView(rootView)
           }
+        } else {
+          handleLocalAction(id, value)
         }
       } catch (e: Exception) {
-        e.printStackTrace()
+        handleLocalAction(id, value)
       }
     }
   }
@@ -181,7 +1112,7 @@ class MainActivity : Activity() {
         spacer.layoutParams = LinearLayout.LayoutParams(0, 0, flex.toFloat())
         spacer
       }
-      type.contains("Text") -> {
+      type == "Text" -> {
         val textView = TextView(this)
         textView.text = node.optString("text")
         
@@ -884,9 +1815,27 @@ class MainActivity : Activity() {
         editText.background = bg
         editText.setPadding((12 * density).toInt(), (12 * density).toInt(), (12 * density).toInt(), (12 * density).toInt())
 
+        editText.addTextChangedListener(object : android.text.TextWatcher {
+          override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+          override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+            val textVal = s?.toString() ?: ""
+            if (fieldId == "tf_new_task") {
+              newTaskTitle = textVal
+            }
+          }
+          override fun afterTextChanged(s: android.text.Editable?) {}
+        })
+
         editText.setOnEditorActionListener { _, _, _ ->
-          if (fieldId.isNotEmpty()) sendAction(fieldId, value = editText.text.toString())
-          false
+          val currentText = editText.text.toString()
+          if (fieldId == "tf_new_task") {
+            newTaskTitle = currentText
+            sendAction("btn_submit_task")
+            true
+          } else {
+            if (fieldId.isNotEmpty()) sendAction(fieldId, value = currentText)
+            false
+          }
         }
         layout.addView(editText)
 
