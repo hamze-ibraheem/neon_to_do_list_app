@@ -33,13 +33,13 @@ class MainActivity : Activity() {
   }
 
   companion object {
-    private const val BASE_URL = "https://custom-frameworks-neon-framework.iix8qf.easypanel.host"
+    private const val BASE_URL = "http://localhost:8080"
   }
 
   private fun fetchUiTree() {
     thread {
       try {
-        // Connect to remote host or fallback
+        // Connect to localhost:8080 (via adb reverse)
         val url = URL("$BASE_URL/api/tree")
         val connection = url.openConnection() as HttpURLConnection
         connection.requestMethod = "GET"
