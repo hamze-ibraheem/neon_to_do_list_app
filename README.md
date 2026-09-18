@@ -8,6 +8,11 @@ A modern, responsive To-Do application built using the Neon Custom Mobile Framew
 - **Native Android UI**: Custom Kotlin-rendered views for high performance and smooth interaction.
 - **Interactive Actions**: Action dispatch and reactive updates between Dart logic and native Android components.
 
+## Backend & Host Endpoint
+The app connects to the hosted Neon Framework backend:
+- **Host**: `https://custom-frameworks-neon-framework.iix8qf.easypanel.host/`
+- **Endpoints**: `/api/tree` (UI tree serialization) and `/action` (event dispatch)
+
 ## Tech Stack
 - **Framework**: Neon Framework
 - **Language**: Dart & Kotlin

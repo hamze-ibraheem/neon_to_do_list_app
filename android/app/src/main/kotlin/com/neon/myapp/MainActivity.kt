@@ -33,13 +33,13 @@ class MainActivity : Activity() {
   }
 
   companion object {
-    private const val BASE_URL = "http://localhost:8080"
+    private const val BASE_URL = "https://custom-frameworks-neon-framework.iix8qf.easypanel.host"
   }
 
   private fun fetchUiTree() {
     thread {
       try {
-        // Connect to localhost:8080 (via adb reverse)
+        // Connect to remote host or fallback
         val url = URL("$BASE_URL/api/tree")
         val connection = url.openConnection() as HttpURLConnection
         connection.requestMethod = "GET"
@@ -64,7 +64,7 @@ class MainActivity : Activity() {
       } catch (e: Exception) {
         runOnUiThread {
           val errorView = TextView(this)
-          errorView.text = "Error connecting to Dart:\n${e.message}\n\nMake sure 'dart run' is active and 'adb reverse' is set."
+          errorView.text = "Error connecting to Neon host:\n${e.message}\n\nHost: $BASE_URL"
           errorView.setTextColor(Color.RED)
           setContentView(errorView)
         }
