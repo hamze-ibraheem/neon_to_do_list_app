@@ -89,3 +89,35 @@ The release APK has been built and placed in the project's `export` folder for i
 - **Path**: [export/neon_todo_app-release.apk](file:///Volumes/SSDM22TB/Task%20Foundation%20Apps/custom%20frameworks/neon_to_do_list_app/export/neon_todo_app-release.apk)
 - **Size**: ~630 KB
 - **Network Requirements**: None (zero localhost links, works 100% offline)
+
+
+
+
+Step-by-Step Apple Developer Account & TestFlight Setup
+Because Xcode Cloud handles all certificates, provisioning profiles, and signing identities directly via your Apple Developer Account, follow these 3 quick steps:
+
+Step 1: Register App ID in Apple Developer Portal
+Navigate to Apple Developer Identifiers.
+Click + (Add Identifier) -> Select App IDs -> Click Continue -> Select App.
+Description: Neon To-Do List
+Bundle ID: Select Explicit and enter com.neon.todolist.
+Click Continue -> Register.
+Step 2: Create App in App Store Connect
+Go to App Store Connect Apps.
+Click + -> New App.
+Platforms: Check iOS.
+Name: Neon Task Studio (or your preferred App Store name).
+Primary Language: English.
+Bundle ID: Select com.neon.todolist from the dropdown list.
+SKU: NEON-TODO-001.
+Click Create.
+Step 3: Configure Xcode Cloud Workflow for TestFlight
+In App Store Connect, open your newly created app and click the Xcode Cloud tab (or in Xcode on your Mac, open ios/NeonApp.xcodeproj and choose Product > Xcode Cloud > Create Workflow).
+Select your repository: hamze-ibraheem/neon_to_do_list_app.
+Configure the workflow:
+Branch: main
+Action: Archive - iOS
+Scheme: NeonApp
+Post-Action: TestFlight (Internal Testing) -> Select your tester group (e.g., App Store Connect Users).
+Save the workflow and click Start Build (or simply push any commit to main).
+Xcode Cloud will clone the repo, run ci_scripts/ci_pre_xcodebuild.sh, compile and sign the IPA in Apple's cloud, and automatically deliver the build to TestFlight!
