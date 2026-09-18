@@ -6,12 +6,6 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		5AD46BFBAE29EC289131CEE6 /* Pods_NeonApp.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FF681A2D2D0BA02B0DBB9334 /* Pods_NeonApp.framework */; };
-		7F979E0897000D76736BDE10 /* Pods_NeonAppTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 19805F588497DBD38E3F409F /* Pods_NeonAppTests.framework */; };
-		EC1932E52A3A55C7261379A1 /* Pods_NeonAppUITests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8A0B731B27186608132B7C9F /* Pods_NeonAppUITests.framework */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXContainerItemProxy section */
 		A55827422F41F31A009F639E /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -30,18 +24,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		092D0964FB7BFFB0877323B5 /* Pods-NeonAppTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NeonAppTests.debug.xcconfig"; path = "Target Support Files/Pods-NeonAppTests/Pods-NeonAppTests.debug.xcconfig"; sourceTree = "<group>"; };
-		19805F588497DBD38E3F409F /* Pods_NeonAppTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_NeonAppTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		309EDB7D7A0771F58985BCFE /* Pods-NeonApp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NeonApp.release.xcconfig"; path = "Target Support Files/Pods-NeonApp/Pods-NeonApp.release.xcconfig"; sourceTree = "<group>"; };
-		30AE23CE68AAC8C3E43CE9D2 /* Pods-NeonAppTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NeonAppTests.release.xcconfig"; path = "Target Support Files/Pods-NeonAppTests/Pods-NeonAppTests.release.xcconfig"; sourceTree = "<group>"; };
-		65BF31461E1295BEA8CA4ACC /* Pods-NeonAppUITests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NeonAppUITests.release.xcconfig"; path = "Target Support Files/Pods-NeonAppUITests/Pods-NeonAppUITests.release.xcconfig"; sourceTree = "<group>"; };
-		8A0B731B27186608132B7C9F /* Pods_NeonAppUITests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_NeonAppUITests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A558272B2F41F319009F639E /* NeonApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NeonApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A55827412F41F31A009F639E /* NeonAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NeonAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A558274B2F41F31A009F639E /* NeonAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NeonAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		DC4499ABE98896F59F6DDC7C /* Pods-NeonApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NeonApp.debug.xcconfig"; path = "Target Support Files/Pods-NeonApp/Pods-NeonApp.debug.xcconfig"; sourceTree = "<group>"; };
-		F84D354D313F100552C9DF35 /* Pods-NeonAppUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NeonAppUITests.debug.xcconfig"; path = "Target Support Files/Pods-NeonAppUITests/Pods-NeonAppUITests.debug.xcconfig"; sourceTree = "<group>"; };
-		FF681A2D2D0BA02B0DBB9334 /* Pods_NeonApp.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_NeonApp.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -84,7 +69,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				5AD46BFBAE29EC289131CEE6 /* Pods_NeonApp.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -92,7 +76,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7F979E0897000D76736BDE10 /* Pods_NeonAppTests.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -100,37 +83,12 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				EC1932E52A3A55C7261379A1 /* Pods_NeonAppUITests.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		40C27E6CD6992F6FFEEEB578 /* Pods */ = {
-			isa = PBXGroup;
-			children = (
-				DC4499ABE98896F59F6DDC7C /* Pods-NeonApp.debug.xcconfig */,
-				309EDB7D7A0771F58985BCFE /* Pods-NeonApp.release.xcconfig */,
-				092D0964FB7BFFB0877323B5 /* Pods-NeonAppTests.debug.xcconfig */,
-				30AE23CE68AAC8C3E43CE9D2 /* Pods-NeonAppTests.release.xcconfig */,
-				F84D354D313F100552C9DF35 /* Pods-NeonAppUITests.debug.xcconfig */,
-				65BF31461E1295BEA8CA4ACC /* Pods-NeonAppUITests.release.xcconfig */,
-			);
-			name = Pods;
-			path = Pods;
-			sourceTree = "<group>";
-		};
-		6DCC63B6061B7F195274B8F7 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				FF681A2D2D0BA02B0DBB9334 /* Pods_NeonApp.framework */,
-				19805F588497DBD38E3F409F /* Pods_NeonAppTests.framework */,
-				8A0B731B27186608132B7C9F /* Pods_NeonAppUITests.framework */,
-			);
-			name = Frameworks;
-			sourceTree = "<group>";
-		};
 		A55827222F41F319009F639E = {
 			isa = PBXGroup;
 			children = (
@@ -138,8 +96,6 @@
 				A55827442F41F31A009F639E /* NeonAppTests */,
 				A558274E2F41F31A009F639E /* NeonAppUITests */,
 				A558272C2F41F319009F639E /* Products */,
-				40C27E6CD6992F6FFEEEB578 /* Pods */,
-				6DCC63B6061B7F195274B8F7 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -160,7 +116,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A55827542F41F31A009F639E /* Build configuration list for PBXNativeTarget "NeonApp" */;
 			buildPhases = (
-				D5B7FC9F696664408B0DC4B3 /* [CP] Check Pods Manifest.lock */,
 				A55827272F41F319009F639E /* Sources */,
 				A55827282F41F319009F639E /* Frameworks */,
 				A55827292F41F319009F639E /* Resources */,
@@ -181,7 +136,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A55827592F41F31A009F639E /* Build configuration list for PBXNativeTarget "NeonAppTests" */;
 			buildPhases = (
-				980CE8E4A45ABB41FC1DD47F /* [CP] Check Pods Manifest.lock */,
 				A558273D2F41F31A009F639E /* Sources */,
 				A558273E2F41F31A009F639E /* Frameworks */,
 				A558273F2F41F31A009F639E /* Resources */,
@@ -203,7 +157,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A558275C2F41F31A009F639E /* Build configuration list for PBXNativeTarget "NeonAppUITests" */;
 			buildPhases = (
-				7C26DFD87BFA35A1708636B2 /* [CP] Check Pods Manifest.lock */,
 				A55827472F41F31A009F639E /* Sources */,
 				A55827482F41F31A009F639E /* Frameworks */,
 				A55827492F41F31A009F639E /* Resources */,
@@ -289,75 +242,6 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
-/* Begin PBXShellScriptBuildPhase section */
-		7C26DFD87BFA35A1708636B2 /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-				"${PODS_ROOT}/Manifest.lock",
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-NeonAppUITests-checkManifestLockResult.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
-		980CE8E4A45ABB41FC1DD47F /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-				"${PODS_ROOT}/Manifest.lock",
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-NeonAppTests-checkManifestLockResult.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
-		D5B7FC9F696664408B0DC4B3 /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-				"${PODS_ROOT}/Manifest.lock",
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-NeonApp-checkManifestLockResult.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
-/* End PBXShellScriptBuildPhase section */
-
 /* Begin PBXSourcesBuildPhase section */
 		A55827272F41F319009F639E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -398,7 +282,6 @@
 /* Begin XCBuildConfiguration section */
 		A55827552F41F31A009F639E /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = DC4499ABE98896F59F6DDC7C /* Pods-NeonApp.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -431,7 +314,6 @@
 		};
 		A55827562F41F31A009F639E /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 309EDB7D7A0771F58985BCFE /* Pods-NeonApp.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -585,7 +467,6 @@
 		};
 		A558275A2F41F31A009F639E /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 092D0964FB7BFFB0877323B5 /* Pods-NeonAppTests.debug.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -608,7 +489,6 @@
 		};
 		A558275B2F41F31A009F639E /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 30AE23CE68AAC8C3E43CE9D2 /* Pods-NeonAppTests.release.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
@@ -631,7 +511,6 @@
 		};
 		A558275D2F41F31A009F639E /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = F84D354D313F100552C9DF35 /* Pods-NeonAppUITests.debug.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -652,7 +531,6 @@
 		};
 		A558275E2F41F31A009F639E /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 65BF31461E1295BEA8CA4ACC /* Pods-NeonAppUITests.release.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
