@@ -870,6 +870,40 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                 view.setContentHuggingPriority(UILayoutPriority(rawValue: 1), for: .vertical)
                 return view
             }
+            
+            else if type == "Padding" {
+                let container = UIView()
+                var top: CGFloat = 0
+                var bottom: CGFloat = 0
+                var left: CGFloat = 0
+                var right: CGFloat = 0
+                
+                if let p = node["padding"] as? Double {
+                    top = CGFloat(p); bottom = CGFloat(p); left = CGFloat(p); right = CGFloat(p)
+                } else if let pDict = node["padding"] as? [String: Any] {
+                    top = CGFloat(pDict["top"] as? Double ?? 0)
+                    bottom = CGFloat(pDict["bottom"] as? Double ?? 0)
+                    left = CGFloat(pDict["left"] as? Double ?? 0)
+                    right = CGFloat(pDict["right"] as? Double ?? 0)
+                }
+                if let pt = node["padding_top"] as? Double ?? node["top"] as? Double { top = CGFloat(pt) }
+                if let pb = node["padding_bottom"] as? Double ?? node["bottom"] as? Double { bottom = CGFloat(pb) }
+                if let pl = node["padding_left"] as? Double ?? node["left"] as? Double { left = CGFloat(pl) }
+                if let pr = node["padding_right"] as? Double ?? node["right"] as? Double { right = CGFloat(pr) }
+
+                if let children = node["children"] as? [[String: Any]], let firstChild = children.first {
+                    let childView = renderWidget(node: firstChild)
+                    childView.translatesAutoresizingMaskIntoConstraints = false
+                    container.addSubview(childView)
+                    NSLayoutConstraint.activate([
+                        childView.topAnchor.constraint(equalTo: container.topAnchor, constant: top),
+                        childView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -bottom),
+                        childView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: left),
+                        childView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -right)
+                    ])
+                }
+                return container
+            }
 
             else if type == "Text" {
                 let label = UILabel()
@@ -917,20 +951,44 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
             // ✅ FIX: Don't treat as a plain Container if it's flagged as a Button
             else if type.contains("Container") && !(node["isButton"] as? Bool ?? false) {
                 let container = UIView()
-                container.backgroundColor = .systemGray5
-                container.layer.cornerRadius = 12
+                if let colorInt = node["color"] as? Int {
+                    container.backgroundColor = colorFromARGB(colorInt)
+                } else if let colorInt64 = node["color"] as? Int64 {
+                    container.backgroundColor = colorFromARGB(Int(colorInt64))
+                } else {
+                    container.backgroundColor = .systemGray5
+                }
+                
+                let borderRadius = CGFloat(node["borderRadius"] as? Double ?? 12.0)
+                container.layer.cornerRadius = borderRadius
+                if borderRadius > 0 {
+                    container.layer.masksToBounds = true
+                }
+                
+                let hasChildPadding = (node["children"] as? [[String: Any]])?.first?["type"] as? String == "Padding"
+                let defaultPad: CGFloat = hasChildPadding ? 0.0 : 0.0
+                let paddingTop = CGFloat(node["padding_top"] as? Double ?? defaultPad)
+                let paddingBottom = CGFloat(node["padding_bottom"] as? Double ?? defaultPad)
+                let paddingLeft = CGFloat(node["padding_left"] as? Double ?? defaultPad)
+                let paddingRight = CGFloat(node["padding_right"] as? Double ?? defaultPad)
+                
+                if let width = node["width"] as? Double {
+                    container.widthAnchor.constraint(equalToConstant: CGFloat(width)).isActive = true
+                }
+                if let height = node["height"] as? Double {
+                    container.heightAnchor.constraint(equalToConstant: CGFloat(height)).isActive = true
+                }
                 
                 if let children = node["children"] as? [[String: Any]], let firstChild = children.first {
                     let childView = renderWidget(node: firstChild)
                     childView.translatesAutoresizingMaskIntoConstraints = false
                     container.addSubview(childView)
                     
-                    // Add Padding
                     NSLayoutConstraint.activate([
-                        childView.topAnchor.constraint(equalTo: container.topAnchor, constant: 16),
-                        childView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -16),
-                        childView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
-                        childView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16)
+                        childView.topAnchor.constraint(equalTo: container.topAnchor, constant: paddingTop),
+                        childView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -paddingBottom),
+                        childView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: paddingLeft),
+                        childView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -paddingRight)
                     ])
                 }
                 return container
@@ -940,84 +998,99 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
             // ✅ FIX: Check for isButton flag from Dart
             // ✅ NEW: Ultra-Resilient Button Support
             // ✅ FIX: Restore isButton check from Dart to handle interactive Containers
-                        else if (node["isButton"] as? Bool ?? false) || type.contains("Button") {
-                            // 1. Upgrade from standard UIView to a native UIButton
-                            // This guarantees iOS treats it as an interactive element.
-                            let buttonView = UIButton(type: .custom)
-                            
-                            // 🎨 Material 3 Styling based on sourceType
-                            if sourceType == "FilledTonalButton" {
-                                buttonView.backgroundColor = UIColor(red: 0xEA/255.0, green: 0xDD/255.0, blue: 0xFF/255.0, alpha: 1.0)
-                            } else if sourceType == "OutlinedButton" {
-                                buttonView.backgroundColor = .clear
-                                buttonView.layer.borderWidth = 1
-                                buttonView.layer.borderColor = UIColor.systemGray.cgColor
-                            } else if sourceType == "TextButton" {
-                                buttonView.backgroundColor = .clear
-                            } else if sourceType == "ElevatedButton" {
-                                buttonView.backgroundColor = .systemBackground
-                                buttonView.layer.shadowColor = UIColor.black.cgColor
-                                buttonView.layer.shadowOpacity = 0.2
-                                buttonView.layer.shadowOffset = CGSize(width: 0, height: 2)
-                                buttonView.layer.shadowRadius = 4
-                            } else if sourceType == "FloatingActionButton" {
-                                buttonView.backgroundColor = UIColor(red: 0xD0/255.0, green: 0xBC/255.0, blue: 0xFF/255.0, alpha: 1.0)
-                                buttonView.layer.cornerRadius = 16
-                            } else if sourceType == "IconButton" {
-                                buttonView.backgroundColor = .clear
-                                buttonView.layer.cornerRadius = 24 // Assume fixed size
+            else if (node["isButton"] as? Bool ?? false) || type.contains("Button") {
+                // 1. Upgrade from standard UIView to a native UIButton
+                // This guarantees iOS treats it as an interactive element.
+                let buttonView = UIButton(type: .custom)
+                
+                // 🎨 Material 3 Styling based on sourceType or color
+                if let colorInt = node["color"] as? Int {
+                    buttonView.backgroundColor = colorFromARGB(colorInt)
+                } else if let colorInt64 = node["color"] as? Int64 {
+                    buttonView.backgroundColor = colorFromARGB(Int(colorInt64))
+                } else if sourceType == "FilledTonalButton" {
+                    buttonView.backgroundColor = UIColor(red: 0xEA/255.0, green: 0xDD/255.0, blue: 0xFF/255.0, alpha: 1.0)
+                } else if sourceType == "OutlinedButton" {
+                    buttonView.backgroundColor = .clear
+                    buttonView.layer.borderWidth = 1
+                    buttonView.layer.borderColor = UIColor.systemGray.cgColor
+                } else if sourceType == "TextButton" {
+                    buttonView.backgroundColor = .clear
+                } else if sourceType == "ElevatedButton" {
+                    buttonView.backgroundColor = .systemBackground
+                    buttonView.layer.shadowColor = UIColor.black.cgColor
+                    buttonView.layer.shadowOpacity = 0.2
+                    buttonView.layer.shadowOffset = CGSize(width: 0, height: 2)
+                    buttonView.layer.shadowRadius = 4
+                } else if sourceType == "FloatingActionButton" {
+                    buttonView.backgroundColor = UIColor(red: 0xD0/255.0, green: 0xBC/255.0, blue: 0xFF/255.0, alpha: 1.0)
+                    buttonView.layer.cornerRadius = 16
+                } else if sourceType == "IconButton" {
+                    buttonView.backgroundColor = .clear
+                    buttonView.layer.cornerRadius = 24 // Assume fixed size
+                } else {
+                    buttonView.backgroundColor = .systemBlue
+                    buttonView.layer.cornerRadius = 8
+                }
+                
+                let bRadius = CGFloat(node["borderRadius"] as? Double ?? 8.0)
+                buttonView.layer.cornerRadius = bRadius
+                buttonView.clipsToBounds = true
+                
+                // 2. Aggressive ID Fetching
+                // We check "id", "actionId", and "key" to ensure we catch whatever Dart sent.
+                let rawId = node["id"] ?? node["actionId"] ?? node["key"]
+                
+                if let rawId = rawId {
+                    let buttonId = "\(rawId)" // Safely convert to String
+                    print("🔗 Attaching tap gesture to Button ID: \(buttonId)")
+                    
+                    let tap = ActionTapGesture(target: self, action: #selector(handleTap(_:)))
+                    tap.buttonId = buttonId
+                    buttonView.addGestureRecognizer(tap)
+                    buttonView.isUserInteractionEnabled = true
+                } else {
+                    print("⚠️ WARNING: Button received from Dart without ANY id field!")
+                }
+                
+                if let children = node["children"] as? [[String: Any]], let firstChild = children.first {
+                    let childView = renderWidget(node: firstChild)
+                    
+                    if let label = childView as? UILabel {
+                        // Adjust text color for transparent/white buttons
+                        if node["color"] == nil {
+                            if sourceType == "OutlinedButton" || sourceType == "TextButton" || sourceType == "ElevatedButton" {
+                                label.textColor = .systemBlue
                             } else {
-                                buttonView.backgroundColor = .systemBlue
-                                buttonView.layer.cornerRadius = 8
+                                label.textColor = .white
                             }
-                            
-                            // 2. Aggressive ID Fetching
-                            // We check "id", "actionId", and "key" to ensure we catch whatever Dart sent.
-                            let rawId = node["id"] ?? node["actionId"] ?? node["key"]
-                            
-                            if let rawId = rawId {
-                                let buttonId = "\(rawId)" // Safely convert to String
-                                print("🔗 Attaching tap gesture to Button ID: \(buttonId)")
-                                
-                                let tap = ActionTapGesture(target: self, action: #selector(handleTap(_:)))
-                                tap.buttonId = buttonId
-                                buttonView.addGestureRecognizer(tap)
-                                buttonView.isUserInteractionEnabled = true
-                            } else {
-                                print("⚠️ WARNING: Button received from Dart without ANY id field!")
-                            }
-                            
-                            if let children = node["children"] as? [[String: Any]], let firstChild = children.first {
-                                let childView = renderWidget(node: firstChild)
-                                
-                                if let label = childView as? UILabel {
-                                    // Adjust text color for transparent/white buttons
-                                    if sourceType == "OutlinedButton" || sourceType == "TextButton" || sourceType == "ElevatedButton" {
-                                        label.textColor = .systemBlue
-                                    } else {
-                                        label.textColor = .white
-                                    }
-                                    label.font = .boldSystemFont(ofSize: 18)
-                                }
-                                
-                                // 3. THE CRITICAL FIX: Disable interaction on the entire child tree.
-                                // This forces the touch to pass completely through the Text/Container
-                                // and hit the Button underneath it.
-                                childView.isUserInteractionEnabled = false
-                                
-                                childView.translatesAutoresizingMaskIntoConstraints = false
-                                buttonView.addSubview(childView)
-                                
-                                NSLayoutConstraint.activate([
-                                    childView.topAnchor.constraint(equalTo: buttonView.topAnchor, constant: 12),
-                                    childView.bottomAnchor.constraint(equalTo: buttonView.bottomAnchor, constant: -12),
-                                    childView.leadingAnchor.constraint(equalTo: buttonView.leadingAnchor, constant: 24),
-                                    childView.trailingAnchor.constraint(equalTo: buttonView.trailingAnchor, constant: -24)
-                                ])
-                            }
-                            return buttonView
-                            
                         }
+                        label.font = .boldSystemFont(ofSize: 14)
+                    }
+                    
+                    // 3. THE CRITICAL FIX: Disable interaction on the entire child tree.
+                    // This forces the touch to pass completely through the Text/Container
+                    // and hit the Button underneath it.
+                    childView.isUserInteractionEnabled = false
+                    
+                    childView.translatesAutoresizingMaskIntoConstraints = false
+                    buttonView.addSubview(childView)
+                    
+                    let pTop = CGFloat(node["padding_top"] as? Double ?? 10.0)
+                    let pBottom = CGFloat(node["padding_bottom"] as? Double ?? 10.0)
+                    let pLeft = CGFloat(node["padding_left"] as? Double ?? 16.0)
+                    let pRight = CGFloat(node["padding_right"] as? Double ?? 16.0)
+                    
+                    NSLayoutConstraint.activate([
+                        childView.topAnchor.constraint(equalTo: buttonView.topAnchor, constant: pTop),
+                        childView.bottomAnchor.constraint(equalTo: buttonView.bottomAnchor, constant: -pBottom),
+                        childView.leadingAnchor.constraint(equalTo: buttonView.leadingAnchor, constant: pLeft),
+                        childView.trailingAnchor.constraint(equalTo: buttonView.trailingAnchor, constant: -pRight)
+                    ])
+                }
+                return buttonView
+                
+            }
             
             // ✅ NEW: RemoteWidget Support
             else if type == "RemoteWidget" {
@@ -1227,7 +1300,9 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                 chip.accessibilityIdentifier = node["id"] as? String
                 
                 // Set label
-                if let children = node["children"] as? [[String: Any]], let firstChild = children.first {
+                if let labelStr = node["label"] as? String {
+                    chip.setTitle(labelStr, for: .normal)
+                } else if let children = node["children"] as? [[String: Any]], let firstChild = children.first {
                     let childView = renderWidget(node: firstChild)
                     if let label = childView as? UILabel {
                         chip.setTitle(label.text, for: .normal)
@@ -1237,8 +1312,19 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                 // FilterChip shows selected state
                 if type == "FilterChip" {
                     let isSelected = node["selected"] as? Bool ?? false
-                    chip.backgroundColor = isSelected ? .systemBlue : .systemGray5
-                    chip.setTitleColor(isSelected ? .white : .systemBlue, for: .normal)
+                    if isSelected {
+                        if let selColor = node["selectedColor"] as? Int {
+                            chip.backgroundColor = colorFromARGB(selColor)
+                        } else if let selColor64 = node["selectedColor"] as? Int64 {
+                            chip.backgroundColor = colorFromARGB(Int(selColor64))
+                        } else {
+                            chip.backgroundColor = .systemBlue
+                        }
+                        chip.setTitleColor(.white, for: .normal)
+                    } else {
+                        chip.backgroundColor = .systemGray5
+                        chip.setTitleColor(.label, for: .normal)
+                    }
                 }
                 
                 chip.addTarget(self, action: #selector(handleChipTap(_:)), for: .touchUpInside)
@@ -1252,27 +1338,38 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                 card.layer.cornerRadius = CGFloat(borderRadius)
                 card.clipsToBounds = false
                 
-                switch variant {
-                case "elevated":
-                    card.backgroundColor = .systemBackground
-                    card.layer.shadowColor = UIColor.black.cgColor
-                    card.layer.shadowOpacity = 0.15
-                    card.layer.shadowOffset = CGSize(width: 0, height: 2)
-                    card.layer.shadowRadius = 4
-                case "filled":
-                    card.backgroundColor = UIColor(red: 0xE8/255.0, green: 0xDE/255.0, blue: 0xF8/255.0, alpha: 1.0)
-                case "outlined":
-                    card.backgroundColor = .systemBackground
-                    card.layer.borderWidth = 1
-                    card.layer.borderColor = UIColor.systemGray.cgColor
-                default:
-                    card.backgroundColor = .systemBackground
+                if let colorInt = node["color"] as? Int {
+                    card.backgroundColor = colorFromARGB(colorInt)
+                } else if let colorInt64 = node["color"] as? Int64 {
+                    card.backgroundColor = colorFromARGB(Int(colorInt64))
+                } else {
+                    switch variant {
+                    case "elevated":
+                        card.backgroundColor = .systemBackground
+                    case "filled":
+                        card.backgroundColor = UIColor(red: 0xE8/255.0, green: 0xDE/255.0, blue: 0xFF/255.0, alpha: 1.0)
+                    case "outlined":
+                        card.backgroundColor = .systemBackground
+                        card.layer.borderWidth = 1
+                        card.layer.borderColor = UIColor.systemGray.cgColor
+                    default:
+                        card.backgroundColor = .systemBackground
+                    }
                 }
                 
-                let paddingTop = CGFloat(node["padding_top"] as? Double ?? 16.0)
-                let paddingBottom = CGFloat(node["padding_bottom"] as? Double ?? 16.0)
-                let paddingLeft = CGFloat(node["padding_left"] as? Double ?? 16.0)
-                let paddingRight = CGFloat(node["padding_right"] as? Double ?? 16.0)
+                if variant == "elevated" {
+                    card.layer.shadowColor = UIColor.black.cgColor
+                    card.layer.shadowOpacity = 0.08
+                    card.layer.shadowOffset = CGSize(width: 0, height: 2)
+                    card.layer.shadowRadius = 4
+                }
+                
+                let hasChildPadding = (node["children"] as? [[String: Any]])?.first?["type"] as? String == "Padding"
+                let defaultCardPad: CGFloat = hasChildPadding ? 0.0 : 16.0
+                let paddingTop = CGFloat(node["padding_top"] as? Double ?? defaultCardPad)
+                let paddingBottom = CGFloat(node["padding_bottom"] as? Double ?? defaultCardPad)
+                let paddingLeft = CGFloat(node["padding_left"] as? Double ?? defaultCardPad)
+                let paddingRight = CGFloat(node["padding_right"] as? Double ?? defaultCardPad)
                 
                 let contentStack = UIStackView()
                 contentStack.axis = .vertical
