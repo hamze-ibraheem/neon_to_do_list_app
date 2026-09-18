@@ -7,8 +7,10 @@ platforms:
     target_sdk: 34
     package: com.neon.todolist
   ios:
-    min_version: "13.0"
+    min_version: "15.0"
     bundle_id: com.neon.todolist
+    scheme: NeonApp
+    team_id: "3JZ57KN2BP"
 
 build:
   output: build/

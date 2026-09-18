@@ -18,7 +18,16 @@ pubspec.lock
 **/android/.cxx/
 local.properties
 
-# Exported binaries / APKs
+# Exported binaries / APKs / IPAs
 export/
 *.apk
 *.aab
+*.ipa
+
+# Xcode
+xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+*.dSYM.zip
+*.dSYM
+
