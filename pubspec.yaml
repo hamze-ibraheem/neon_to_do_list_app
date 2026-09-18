@@ -8,4 +8,6 @@ environment:
 
 dependencies:
   neon_framework:
-    path: ../Task-Foundatuon-Gits/neon_mobile_framework/NeonFramework-2/neon_framework
+    git:
+      url: https://github.com/hamze-ibraheem/neon_custom_mobile_framework.git
+      path: NeonFramework-2/neon_framework
