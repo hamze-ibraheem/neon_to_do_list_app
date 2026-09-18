@@ -1,0 +1,19 @@
+name: neon_to_do_list_app
+version: 1.0.0
+
+platforms:
+  android:
+    min_sdk: 21
+    target_sdk: 34
+    package: com.neon.todolist
+  ios:
+    min_version: "13.0"
+    bundle_id: com.neon.todolist
+
+build:
+  output: build/
+  obfuscate: false
+
+hot_reload:
+  enabled: true
+  mode: state_preserving

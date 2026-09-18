@@ -1,0 +1,11 @@
+name: neon_to_do_list_app
+description: A modern To-Do List application built with Neon Framework.
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  neon_framework:
+    path: ../Task-Foundatuon-Gits/neon_mobile_framework/NeonFramework-2/neon_framework
