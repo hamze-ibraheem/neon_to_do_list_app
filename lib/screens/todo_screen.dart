@@ -1,7 +1,6 @@
 import 'package:neon_framework/neon.dart';
 import '../models/todo_item.dart';
-
-enum FilterStatus { all, active, completed }
+import '../state/todo_store.dart';
 
 class TodoScreen extends StatefulWidget {
   const TodoScreen({super.key});
@@ -11,613 +10,290 @@ class TodoScreen extends StatefulWidget {
 }
 
 class _TodoScreenState extends NeonState<TodoScreen> {
-  final List<TodoItem> _tasks = [
-    TodoItem(
-      id: 'task_1',
-      title: 'Explore Neon Framework architecture',
-      isCompleted: true,
-      priority: TodoPriority.high,
-      category: 'Work',
-      createdAt: DateTime.now().subtract(const Duration(hours: 3)),
-    ),
-    TodoItem(
-      id: 'task_2',
-      title: 'Build custom mobile app with Neon SDK',
-      isCompleted: false,
-      priority: TodoPriority.high,
-      category: 'Work',
-      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-    ),
-    TodoItem(
-      id: 'task_3',
-      title: 'Design native Android bridge and UI tree',
-      isCompleted: false,
-      priority: TodoPriority.medium,
-      category: 'Study',
-      createdAt: DateTime.now().subtract(const Duration(hours: 1)),
-    ),
-    TodoItem(
-      id: 'task_4',
-      title: 'Review local storage & networking layers',
-      isCompleted: false,
-      priority: TodoPriority.low,
-      category: 'Personal',
-      createdAt: DateTime.now(),
-    ),
-  ];
+  final TodoStore _store = TodoStore.instance;
 
-  String _newTaskTitle = '';
-  TodoPriority _selectedPriority = TodoPriority.medium;
-  String _selectedCategory = 'Work';
-  FilterStatus _filterStatus = FilterStatus.all;
-  String _activeCategoryFilter = 'All';
-
-  final List<String> _categories = const [
-    'Work',
-    'Personal',
-    'Study',
-    'Shopping',
-    'Health',
-  ];
-
-  void _addTask() {
-    final title = _newTaskTitle.trim();
-    if (title.isEmpty) return;
-
-    final newTask = TodoItem(
-      id: 'task_${DateTime.now().millisecondsSinceEpoch}',
-      title: title,
-      isCompleted: false,
-      priority: _selectedPriority,
-      category: _selectedCategory,
-      createdAt: DateTime.now(),
-    );
-
-    setState(() {
-      _tasks.insert(0, newTask);
-      _newTaskTitle = '';
-    });
+  @override
+  void initState() {
+    super.initState();
+    _store.tasks.listen(_onStoreChanged);
+    _store.statusFilter.listen(_onStoreChanged);
+    _store.categoryFilter.listen(_onStoreChanged);
+    _store.searchQuery.listen(_onStoreChanged);
   }
 
-  void _toggleTask(String id) {
-    setState(() {
-      final index = _tasks.indexWhere((t) => t.id == id);
-      if (index != -1) {
-        final current = _tasks[index];
-        _tasks[index] = current.copyWith(isCompleted: !current.isCompleted);
-      }
-    });
+  void _onStoreChanged() {
+    if (mounted) setState(() {});
   }
 
-  void _deleteTask(String id) {
-    setState(() {
-      _tasks.removeWhere((t) => t.id == id);
-    });
+  @override
+  void dispose() {
+    _store.tasks.removeListener(_onStoreChanged);
+    _store.statusFilter.removeListener(_onStoreChanged);
+    _store.categoryFilter.removeListener(_onStoreChanged);
+    _store.searchQuery.removeListener(_onStoreChanged);
+    super.dispose();
   }
 
-  void _clearCompleted() {
-    setState(() {
-      _tasks.removeWhere((t) => t.isCompleted);
-    });
-  }
-
-  void _toggleAll() {
-    final hasUncompleted = _tasks.any((t) => !t.isCompleted);
-    setState(() {
-      for (int i = 0; i < _tasks.length; i++) {
-        _tasks[i] = _tasks[i].copyWith(isCompleted: hasUncompleted);
-      }
-    });
-  }
-
-  List<TodoItem> get _filteredTasks {
-    return _tasks.where((task) {
-      if (_filterStatus == FilterStatus.active && task.isCompleted) {
-        return false;
-      }
-      if (_filterStatus == FilterStatus.completed && !task.isCompleted) {
-        return false;
-      }
-      if (_activeCategoryFilter != 'All' &&
-          task.category != _activeCategoryFilter) {
-        return false;
-      }
-      return true;
-    }).toList();
+  NeonColor _priorityColor(TodoPriority p) {
+    switch (p) {
+      case TodoPriority.high:
+        return NeonColor.danger;
+      case TodoPriority.medium:
+        return NeonColor.warning;
+      case TodoPriority.low:
+        return NeonColor.success;
+    }
   }
 
   @override
   NeonWidget build(NeonBuildContext context) {
-    final totalCount = _tasks.length;
-    final completedCount = _tasks.where((t) => t.isCompleted).length;
-    final activeCount = totalCount - completedCount;
-    final progress = totalCount > 0 ? (completedCount / totalCount) : 0.0;
-    final percentInt = (progress * 100).toInt();
-
-    final filteredList = _filteredTasks;
+    final tasks = _store.filteredTasks;
+    final total = _store.tasks.value.length;
+    final completed = _store.tasks.value.where((t) => t.isCompleted).length;
+    final pct = total > 0 ? ((completed / total) * 100).toInt() : 0;
+    final currentStatus = _store.statusFilter.value;
+    final currentCat = _store.categoryFilter.value;
 
     return Column(
       children: [
-        AppBar(
-          key: 'appbar_todo',
-          title: const Text('Neon Task Studio'),
-          variant: AppBarVariant.small,
-          actions: [
-            Badge(
-              key: 'badge_active_tasks',
-              label: Text('$activeCount'),
-              backgroundColor: const NeonColor(0xFF4F46E5),
-              child: const Text('📋 Tasks '),
-            ),
-          ],
-        ),
+        // Main Scrollable Area
         Expanded(
-          child: Container(
-            color: const NeonColor(0xFFF1F5F9),
-            padding: const NeonEdgeInsets.symmetric(
-              horizontal: 16.0,
-              vertical: 12.0,
-            ),
-            child: SingleChildScrollView(
-              padding: const NeonEdgeInsets.only(bottom: 24.0),
+          child: SingleChildScrollView(
+            child: Container(
+              padding: const NeonEdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. Productivity Summary Card
-                  Card(
-                    key: 'card_progress',
-                    borderRadius: 14.0,
-                    color: const NeonColor(0xFFFFFFFF),
-                    padding: const NeonEdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Progress Overview',
-                              style: NeonTextStyle(
-                                fontSize: 16.0,
-                                fontWeight: NeonFontWeight.bold,
-                                color: NeonColor(0xFF1E293B),
-                              ),
-                            ),
-                            Text(
-                              '$percentInt% done ($completedCount/$totalCount)',
-                              style: const NeonTextStyle(
-                                fontSize: 13.0,
-                                fontWeight: NeonFontWeight.bold,
-                                color: NeonColor(0xFF4F46E5),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10.0),
-                        LinearProgressIndicator(
-                          key: 'progress_bar',
-                          value: progress,
-                          minHeight: 8.0,
-                          borderRadius: 4.0,
-                          color: const NeonColor(0xFF4F46E5),
-                          backgroundColor: const NeonColor(0xFFE2E8F0),
-                        ),
-                        const SizedBox(height: 12.0),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            Text(
-                              'Total: $totalCount',
-                              style: const NeonTextStyle(
-                                fontSize: 12.0,
-                                color: NeonColor(0xFF64748B),
-                              ),
-                            ),
-                            Text(
-                              'Active: $activeCount',
-                              style: const NeonTextStyle(
-                                fontSize: 12.0,
-                                fontWeight: NeonFontWeight.bold,
-                                color: NeonColor(0xFF0EA5E9),
-                              ),
-                            ),
-                            Text(
-                              'Done: $completedCount',
-                              style: const NeonTextStyle(
-                                fontSize: 12.0,
-                                fontWeight: NeonFontWeight.bold,
-                                color: NeonColor(0xFF10B981),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 16.0),
-
-                  // 2. Add Task Card
-                  Card(
-                    key: 'card_add_task',
-                    borderRadius: 14.0,
-                    color: const NeonColor(0xFFFFFFFF),
-                    padding: const NeonEdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Create New Task',
-                          style: NeonTextStyle(
-                            fontSize: 16.0,
-                            fontWeight: NeonFontWeight.bold,
-                            color: NeonColor(0xFF1E293B),
-                          ),
-                        ),
-                        const SizedBox(height: 10.0),
-                        TextField.outlined(
-                          key: 'tf_new_task',
-                          value: _newTaskTitle,
-                          labelText: 'Task Description',
-                          hintText: 'e.g. Test iOS native bridge...',
-                          onChanged: (val) {
-                            setState(() {
-                              _newTaskTitle = val;
-                            });
-                          },
-                          onSubmitted: (_) => _addTask(),
-                        ),
-                        const SizedBox(height: 12.0),
-                        const Text(
-                          'Priority:',
-                          style: NeonTextStyle(
-                            fontSize: 12.0,
-                            fontWeight: NeonFontWeight.bold,
-                            color: NeonColor(0xFF64748B),
-                          ),
-                        ),
-                        const SizedBox(height: 6.0),
-                        Row(
-                          children: [
-                            FilterChip(
-                              key: 'chip_prio_low',
-                              label: const Text('Low'),
-                              selected: _selectedPriority == TodoPriority.low,
-                              onSelected: (_) {
-                                setState(() {
-                                  _selectedPriority = TodoPriority.low;
-                                });
-                              },
-                            ),
-                            const SizedBox(width: 8.0),
-                            FilterChip(
-                              key: 'chip_prio_med',
-                              label: const Text('Medium'),
-                              selected: _selectedPriority == TodoPriority.medium,
-                              onSelected: (_) {
-                                setState(() {
-                                  _selectedPriority = TodoPriority.medium;
-                                });
-                              },
-                            ),
-                            const SizedBox(width: 8.0),
-                            FilterChip(
-                              key: 'chip_prio_high',
-                              label: const Text('High'),
-                              selected: _selectedPriority == TodoPriority.high,
-                              onSelected: (_) {
-                                setState(() {
-                                  _selectedPriority = TodoPriority.high;
-                                });
-                              },
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12.0),
-                        const Text(
-                          'Category:',
-                          style: NeonTextStyle(
-                            fontSize: 12.0,
-                            fontWeight: NeonFontWeight.bold,
-                            color: NeonColor(0xFF64748B),
-                          ),
-                        ),
-                        const SizedBox(height: 6.0),
-                        Row(
-                          children: [
-                            for (final cat in _categories) ...[
-                              FilterChip(
-                                key: 'chip_cat_$cat',
-                                label: Text(cat),
-                                selected: _selectedCategory == cat,
-                                onSelected: (_) {
-                                  setState(() {
-                                    _selectedCategory = cat;
-                                  });
-                                },
-                              ),
-                              const SizedBox(width: 6.0),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 14.0),
-                        FilledButton(
-                          key: 'btn_submit_task',
-                          color: const NeonColor(0xFF4F46E5),
-                          onPressed: _addTask,
-                          child: const Text(
-                            '+ Add Task to List',
-                            style: NeonTextStyle(
-                              color: NeonColor(0xFFFFFFFF),
-                              fontWeight: NeonFontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 16.0),
-
-                  // 3. Filter Controls
-                  Card(
-                    key: 'card_filters',
-                    borderRadius: 14.0,
-                    color: const NeonColor(0xFFFFFFFF),
-                    padding: const NeonEdgeInsets.symmetric(
-                      horizontal: 14.0,
-                      vertical: 10.0,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            FilterChip(
-                              key: 'filter_status_all',
-                              label: Text('All ($totalCount)'),
-                              selected: _filterStatus == FilterStatus.all,
-                              onSelected: (_) {
-                                setState(() {
-                                  _filterStatus = FilterStatus.all;
-                                });
-                              },
-                            ),
-                            const SizedBox(width: 8.0),
-                            FilterChip(
-                              key: 'filter_status_active',
-                              label: Text('Active ($activeCount)'),
-                              selected: _filterStatus == FilterStatus.active,
-                              onSelected: (_) {
-                                setState(() {
-                                  _filterStatus = FilterStatus.active;
-                                });
-                              },
-                            ),
-                            const SizedBox(width: 8.0),
-                            FilterChip(
-                              key: 'filter_status_done',
-                              label: Text('Done ($completedCount)'),
-                              selected: _filterStatus == FilterStatus.completed,
-                              onSelected: (_) {
-                                setState(() {
-                                  _filterStatus = FilterStatus.completed;
-                                });
-                              },
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8.0),
-                        Row(
-                          children: [
-                            FilterChip(
-                              key: 'filter_cat_all',
-                              label: const Text('🏷️ All Tags'),
-                              selected: _activeCategoryFilter == 'All',
-                              onSelected: (_) {
-                                setState(() {
-                                  _activeCategoryFilter = 'All';
-                                });
-                              },
-                            ),
-                            const SizedBox(width: 6.0),
-                            for (final cat in _categories) ...[
-                              FilterChip(
-                                key: 'filter_cat_$cat',
-                                label: Text(cat),
-                                selected: _activeCategoryFilter == cat,
-                                onSelected: (_) {
-                                  setState(() {
-                                    _activeCategoryFilter = cat;
-                                  });
-                                },
-                              ),
-                              const SizedBox(width: 6.0),
-                            ],
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 16.0),
-
-                  // 4. Task List Header & Batch Actions
+                  // Top App Bar / Header
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Tasks (${filteredList.length})',
-                        style: const NeonTextStyle(
-                          fontSize: 18.0,
-                          fontWeight: NeonFontWeight.bold,
-                          color: NeonColor(0xFF1E293B),
-                        ),
-                      ),
-                      Row(
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          FilledButton(
-                            key: 'btn_toggle_all_tasks',
-                            color: const NeonColor(0xFF64748B),
-                            onPressed: _tasks.isEmpty ? null : _toggleAll,
-                            child: Text(
-                              activeCount == 0 ? 'Reset' : 'Check All',
-                              style: const NeonTextStyle(
-                                color: NeonColor(0xFFFFFFFF),
-                                fontSize: 12.0,
-                              ),
+                          const Text(
+                            'Neon Tasks',
+                            style: NeonTextStyle(
+                              fontSize: 26,
+                              fontWeight: NeonFontWeight.bold,
+                              color: NeonColor.textPrimary,
                             ),
                           ),
-                          const SizedBox(width: 8.0),
-                          FilledButton(
-                            key: 'btn_clear_completed_tasks',
-                            color: const NeonColor(0xFFEF4444),
-                            onPressed: completedCount == 0
-                                ? null
-                                : _clearCompleted,
-                            child: const Text(
-                              'Clear Done',
-                              style: NeonTextStyle(
-                                color: NeonColor(0xFFFFFFFF),
-                                fontSize: 12.0,
-                              ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$completed of $total done • $pct% completed',
+                            style: const NeonTextStyle(
+                              fontSize: 13,
+                              color: NeonColor.textSecondary,
                             ),
                           ),
                         ],
+                      ),
+                      const Spacer(),
+                      FilledButton(
+                        key: 'btn_open_new_task',
+                        color: NeonColor.primary,
+                        child: const Text(
+                          '+ New Task',
+                          style: NeonTextStyle(
+                            color: NeonColor.white,
+                            fontWeight: NeonFontWeight.bold,
+                          ),
+                        ),
+                        onPressed: () {
+                          NeonRouter.of(context).push('/new-task');
+                        },
                       ),
                     ],
                   ),
+                  const SizedBox(height: 14),
 
-                  const SizedBox(height: 10.0),
+                  // Search Bar
+                  SearchBar(
+                    key: 'search_tasks_input',
+                    hintText: 'Search tasks by title or notes...',
+                    value: _store.searchQuery.value,
+                    onChanged: (val) {
+                      _store.searchQuery.value = val;
+                    },
+                  ),
+                  const SizedBox(height: 14),
 
-                  // 5. Task Items or Empty State
-                  if (filteredList.isEmpty)
-                    Card(
-                      key: 'card_empty_state',
-                      borderRadius: 14.0,
-                      color: const NeonColor(0xFFFFFFFF),
-                      padding: const NeonEdgeInsets.all(32.0),
+                  // Status Filter Chips
+                  Row(
+                    children: ['All', 'Active', 'Completed'].map((status) {
+                      final isSelected = currentStatus == status;
+                      return Container(
+                        margin: const NeonEdgeInsets.only(right: 8),
+                        child: FilterChip(
+                          key: 'chip_filter_${status.toLowerCase()}',
+                          label: Text(status),
+                          selected: isSelected,
+                          onSelected: (selected) {
+                            if (selected) {
+                              _store.statusFilter.value = status;
+                            }
+                          },
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Category Filter Scrollable Chips
+                  SingleChildScrollView(
+                    scrollDirection: ScrollDirection.horizontal,
+                    child: Row(
+                      children: _store.availableCategories.map((cat) {
+                        final isSelected = currentCat == cat;
+                        return Container(
+                          margin: const NeonEdgeInsets.only(right: 8),
+                          child: FilterChip(
+                            key: 'chip_cat_filter_${cat.toLowerCase()}',
+                            label: Text(cat),
+                            selected: isSelected,
+                            onSelected: (selected) {
+                              if (selected) {
+                                _store.categoryFilter.value = cat;
+                              }
+                            },
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Task List
+                  if (tasks.isEmpty) ...[
+                    const Card(
+                      padding: NeonEdgeInsets.all(32),
                       child: Column(
                         children: [
-                          const Text(
-                            '🎉',
-                            style: NeonTextStyle(fontSize: 36.0),
-                          ),
-                          const SizedBox(height: 8.0),
-                          const Text(
-                            'No Tasks Found',
+                          Text(
+                            '🎉 All Caught Up!',
                             style: NeonTextStyle(
-                              fontSize: 16.0,
+                              fontSize: 18,
                               fontWeight: NeonFontWeight.bold,
-                              color: NeonColor(0xFF1E293B),
+                              color: NeonColor.textPrimary,
                             ),
                           ),
-                          const SizedBox(height: 4.0),
+                          SizedBox(height: 8),
                           Text(
-                            _tasks.isEmpty
-                                ? 'Add your first task above to get started!'
-                                : 'Try changing your status or category filters.',
-                            style: const NeonTextStyle(
-                              fontSize: 13.0,
-                              color: NeonColor(0xFF64748B),
+                            'No tasks match your current filter. Tap "+ New Task" to add more.',
+                            style: NeonTextStyle(
+                              fontSize: 13,
+                              color: NeonColor.textSecondary,
                             ),
                           ),
                         ],
                       ),
-                    )
-                  else
+                    ),
+                  ] else ...[
                     Column(
-                      children: [
-                        for (final item in filteredList) ...[
-                          Card(
-                            key: 'card_task_${item.id}',
-                            borderRadius: 12.0,
-                            color: item.isCompleted
-                                ? const NeonColor(0xFFF8FAFC)
-                                : const NeonColor(0xFFFFFFFF),
+                      children: tasks.map((task) {
+                        return Container(
+                          margin: const NeonEdgeInsets.only(bottom: 10),
+                          child: Card(
+                            key: 'card_task_${task.id}',
                             padding: const NeonEdgeInsets.symmetric(
-                              horizontal: 12.0,
-                              vertical: 10.0,
+                              horizontal: 14,
+                              vertical: 12,
                             ),
                             child: Row(
                               children: [
                                 Checkbox(
-                                  key: 'cb_task_${item.id}',
-                                  value: item.isCompleted,
-                                  onChanged: (_) => _toggleTask(item.id),
+                                  key: 'chk_task_${task.id}',
+                                  value: task.isCompleted,
+                                  onChanged: (_) {
+                                    _store.toggleTask(task.id);
+                                  },
                                 ),
-                                const SizedBox(width: 12.0),
+                                const SizedBox(width: 10),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        item.isCompleted
-                                            ? '✓ ${item.title}'
-                                            : item.title,
+                                        task.title,
                                         style: NeonTextStyle(
-                                          fontSize: 15.0,
-                                          fontWeight: item.isCompleted
-                                              ? NeonFontWeight.normal
-                                              : NeonFontWeight.bold,
-                                          color: item.isCompleted
+                                          fontSize: 15,
+                                          fontWeight: NeonFontWeight.bold,
+                                          color: task.isCompleted
                                               ? const NeonColor(0xFF94A3B8)
-                                              : const NeonColor(0xFF0F172A),
+                                              : NeonColor.textPrimary,
                                         ),
                                       ),
-                                      const SizedBox(height: 4.0),
+                                      if (task.description.isNotEmpty) ...[
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          task.description,
+                                          style: const NeonTextStyle(
+                                            fontSize: 12,
+                                            color: NeonColor.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 6),
                                       Row(
                                         children: [
-                                          Text(
-                                            item.priority.badgeText,
-                                            style: const NeonTextStyle(
-                                              fontSize: 11.0,
-                                              fontWeight: NeonFontWeight.bold,
-                                              color: NeonColor(0xFF475569),
-                                            ),
+                                          Badge(
+                                            backgroundColor: const NeonColor(0xFF6366F1),
+                                            label: Text(task.category),
+                                            child: const SizedBox(width: 0, height: 0),
                                           ),
-                                          const SizedBox(width: 8.0),
-                                          Text(
-                                            '🏷️ ${item.category}',
-                                            style: const NeonTextStyle(
-                                              fontSize: 11.0,
-                                              color: NeonColor(0xFF64748B),
-                                            ),
+                                          const SizedBox(width: 6),
+                                          Badge(
+                                            backgroundColor: _priorityColor(task.priority),
+                                            label: Text(task.priority.badgeText),
+                                            child: const SizedBox(width: 0, height: 0),
                                           ),
                                         ],
                                       ),
                                     ],
                                   ),
                                 ),
-                                const SizedBox(width: 8.0),
-                                Button(
-                                  key: 'btn_del_${item.id}',
-                                  color: const NeonColor(0xFFFEE2E2),
-                                  padding: const NeonEdgeInsets.symmetric(
-                                    horizontal: 10.0,
-                                    vertical: 6.0,
-                                  ),
-                                  onPressed: () => _deleteTask(item.id),
+                                const SizedBox(width: 8),
+                                FilledButton(
+                                  key: 'btn_view_task_${task.id}',
+                                  color: NeonColor.primary,
                                   child: const Text(
-                                    '✕',
+                                    'Edit →',
                                     style: NeonTextStyle(
-                                      color: NeonColor(0xFFDC2626),
+                                      color: NeonColor.white,
                                       fontWeight: NeonFontWeight.bold,
-                                      fontSize: 12.0,
                                     ),
                                   ),
+                                  onPressed: () {
+                                    NeonRouter.of(context).push('/tasks/${task.id}');
+                                  },
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(height: 8.0),
-                        ],
-                      ],
+                        );
+                      }).toList(),
                     ),
+                  ],
+                  const SizedBox(height: 12),
                 ],
               ),
             ),
           ),
+        ),
+
+        // Permanently Docked Bottom Navigation Bar
+        NavigationBar(
+          selectedIndex: 0,
+          onDestinationSelected: (idx) {
+            if (idx == 0) NeonRouter.of(context).replace('/tasks');
+            if (idx == 1) NeonRouter.of(context).replace('/analytics');
+            if (idx == 2) NeonRouter.of(context).replace('/settings');
+          },
+          destinations: const [
+            NavigationDestination(icon: Text('📋'), label: 'Tasks'),
+            NavigationDestination(icon: Text('📊'), label: 'Analytics'),
+            NavigationDestination(icon: Text('⚙️'), label: 'Settings'),
+          ],
         ),
       ],
     );

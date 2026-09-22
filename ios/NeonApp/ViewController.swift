@@ -26,7 +26,17 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
     private var filterStatus: String = "all" // "all", "active", "completed"
     private var activeCategoryFilter: String = "All"
     private let categories = ["Work", "Personal", "Study", "Shopping", "Health"]
-    private let useRemoteServer = false
+    private let useRemoteServer = true
+
+    #if targetEnvironment(simulator)
+    private let defaultServerUrl = "http://localhost:8080"
+    #else
+    private let defaultServerUrl = "http://192.168.1.9:8080"
+    #endif
+
+    private var activeServerUrl: String {
+        return UserDefaults.standard.string(forKey: "neon_server_url") ?? defaultServerUrl
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -36,7 +46,7 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
         
         if useRemoteServer {
             let loadingLabel = UILabel()
-            loadingLabel.text = "Connecting to Neon Engine..."
+            loadingLabel.text = "Connecting to Neon Engine at \(activeServerUrl)..."
             loadingLabel.textAlignment = .center
             loadingLabel.frame = view.bounds
             view.addSubview(loadingLabel)
@@ -756,15 +766,14 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
     }
     
     private func fetchUiTree() {
-        // The iOS Simulator shares the Mac's localhost automatically!
-        guard let url = URL(string: "https://custom-frameworks-neon-framework.iix8qf.easypanel.host/api/tree") else { return }
+        guard let url = URL(string: "\(activeServerUrl)/api/tree") else { return }
         
         let task = URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
             guard let self = self else { return }
             
             if let error = error {
                 DispatchQueue.main.async {
-                    self.showError("Error connecting to Dart:\n\(error.localizedDescription)\n\nEnsure 'dart run' is active.")
+                    self.showError("Error connecting to Dart Engine at \(self.activeServerUrl):\n\(error.localizedDescription)\n\nEnsure 'dart run' is running on your Mac.")
                 }
                 return
             }
@@ -772,7 +781,7 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
             guard let data = data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 DispatchQueue.main.async {
-                    self.showError("Invalid JSON received from Neon Engine.")
+                    self.showError("Invalid JSON received from Neon Engine at \(self.activeServerUrl).")
                 }
                 return
             }
@@ -781,14 +790,16 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
             DispatchQueue.main.async {
                 self.view.subviews.forEach { $0.removeFromSuperview() }
                 
-                let rootView = self.renderWidget(node: json)
+                let treeNode = (json["tree"] as? [String: Any]) ?? (json["root"] as? [String: Any]) ?? json
+                let rootView = self.renderWidget(node: treeNode)
                 rootView.translatesAutoresizingMaskIntoConstraints = false
                 self.view.addSubview(rootView)
                 
-                // Center the rendered UI on the screen
                 NSLayoutConstraint.activate([
-                    rootView.centerXAnchor.constraint(equalTo: self.view.centerXAnchor),
-                    rootView.centerYAnchor.constraint(equalTo: self.view.centerYAnchor)
+                    rootView.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+                    rootView.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
+                    rootView.topAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.topAnchor),
+                    rootView.bottomAnchor.constraint(equalTo: self.view.bottomAnchor)
                 ])
             }
         }
@@ -797,36 +808,145 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
     
     private func showError(_ message: String) {
         view.subviews.forEach { $0.removeFromSuperview() }
+        
+        let container = UIStackView()
+        container.axis = .vertical
+        container.spacing = 16
+        container.alignment = .center
+        container.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(container)
+        
         let errorLabel = UILabel()
         errorLabel.text = message
         errorLabel.textColor = .systemRed
         errorLabel.numberOfLines = 0
         errorLabel.textAlignment = .center
-        errorLabel.frame = view.bounds.insetBy(dx: 20, dy: 20)
-        view.addSubview(errorLabel)
+        container.addArrangedSubview(errorLabel)
+        
+        let retryBtn = UIButton(type: .system)
+        retryBtn.setTitle("🔄 Retry Connection", for: .normal)
+        retryBtn.titleLabel?.font = .boldSystemFont(ofSize: 16)
+        retryBtn.addTarget(self, action: #selector(retryTapped), for: .touchUpInside)
+        container.addArrangedSubview(retryBtn)
+        
+        let changeIpBtn = UIButton(type: .system)
+        changeIpBtn.setTitle("⚙️ Configure Server URL", for: .normal)
+        changeIpBtn.addTarget(self, action: #selector(changeIpTapped), for: .touchUpInside)
+        container.addArrangedSubview(changeIpBtn)
+        
+        NSLayoutConstraint.activate([
+            container.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            container.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            container.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+        ])
+    }
+
+    @objc private func retryTapped() {
+        view.subviews.forEach { $0.removeFromSuperview() }
+        let loadingLabel = UILabel()
+        loadingLabel.text = "Connecting to Neon Engine at \(activeServerUrl)..."
+        loadingLabel.textAlignment = .center
+        loadingLabel.frame = view.bounds
+        view.addSubview(loadingLabel)
+        fetchUiTree()
+    }
+    
+    @objc private func changeIpTapped() {
+        let alert = UIAlertController(title: "Neon Server URL", message: "Enter your Mac's IP address (e.g. http://192.168.1.9:8080)", preferredStyle: .alert)
+        alert.addTextField { [weak self] textField in
+            textField.text = self?.activeServerUrl
+            textField.placeholder = "http://192.168.1.9:8080"
+        }
+        alert.addAction(UIAlertAction(title: "Save & Connect", style: .default) { [weak self] _ in
+            guard let self = self, let text = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return }
+            UserDefaults.standard.set(text, forKey: "neon_server_url")
+            self.retryTapped()
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
     }
     
     // Recursive function mapping JSON to iOS UIViews
-        private func renderWidget(node: [String: Any]) -> UIView {
-            let type = node["type"] as? String ?? ""
-            let sourceType = node["sourceType"] as? String ?? ""
+    private func renderWidget(node: [String: Any]) -> UIView {
+        if let tree = node["tree"] as? [String: Any] {
+            return renderWidget(node: tree)
+        }
+        if let root = node["root"] as? [String: Any], (node["type"] as? String) == "full" {
+            return renderWidget(node: root)
+        }
+        let type = node["type"] as? String ?? ""
+        let sourceType = node["sourceType"] as? String ?? ""
 
-            // ✅ TOP PRIORITY: Layout Helpers
-            if type == "Expanded" {
-                let view = UIView()
-                if let children = node["children"] as? [[String: Any]], let firstChild = children.first {
-                    let childView = renderWidget(node: firstChild)
+        // ✅ TOP PRIORITY: Layout Helpers
+        if type == "Expanded" {
+            let view = UIView()
+            view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            view.setContentHuggingPriority(.defaultLow, for: .vertical)
+            view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+            if let children = node["children"] as? [[String: Any]], let firstChild = children.first {
+                let childView = renderWidget(node: firstChild)
+                childView.translatesAutoresizingMaskIntoConstraints = false
+                view.addSubview(childView)
+                NSLayoutConstraint.activate([
+                    childView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                    childView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                    childView.topAnchor.constraint(equalTo: view.topAnchor),
+                    childView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+                ])
+            }
+            return view
+        }
+        
+        // ✅ NEW: Native Stack Support
+        else if type == "Stack" {
+            let container = UIView()
+            container.translatesAutoresizingMaskIntoConstraints = false
+            if let children = node["children"] as? [[String: Any]] {
+                for childNode in children {
+                    let childView = renderWidget(node: childNode)
                     childView.translatesAutoresizingMaskIntoConstraints = false
-                    view.addSubview(childView)
+                    container.addSubview(childView)
                     NSLayoutConstraint.activate([
-                        childView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                        childView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                        childView.topAnchor.constraint(equalTo: view.topAnchor),
-                        childView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+                        childView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                        childView.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor),
+                        childView.topAnchor.constraint(equalTo: container.topAnchor),
+                        childView.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor)
                     ])
                 }
-                return view
             }
+            return container
+        }
+        
+        // ✅ NEW: Native Badge & BadgeLabel Support
+        else if type == "Badge" || type == "BadgeLabel" {
+            let badgeView = UIView()
+            badgeView.translatesAutoresizingMaskIntoConstraints = false
+            let bgInt = node["backgroundColor"] as? Int ?? node["color"] as? Int ?? 0xFF4F46E5
+            badgeView.backgroundColor = colorFromARGB(bgInt)
+            badgeView.layer.cornerRadius = 8
+            badgeView.clipsToBounds = true
+            
+            let label = UILabel()
+            label.translatesAutoresizingMaskIntoConstraints = false
+            var labelText = node["label"] as? String ?? (node["text"] as? String ?? "")
+            if labelText.isEmpty, let children = node["children"] as? [[String: Any]], let firstChild = children.first {
+                labelText = firstChild["text"] as? String ?? ""
+            }
+            label.text = labelText
+            label.font = .boldSystemFont(ofSize: 11)
+            let textColInt = node["labelColor"] as? Int ?? 0xFFFFFFFF
+            label.textColor = colorFromARGB(textColInt)
+            badgeView.addSubview(label)
+            
+            NSLayoutConstraint.activate([
+                label.leadingAnchor.constraint(equalTo: badgeView.leadingAnchor, constant: 8),
+                label.trailingAnchor.constraint(equalTo: badgeView.trailingAnchor, constant: -8),
+                label.topAnchor.constraint(equalTo: badgeView.topAnchor, constant: 4),
+                label.bottomAnchor.constraint(equalTo: badgeView.bottomAnchor, constant: -4)
+            ])
+            return badgeView
+        }
             
             else if type == "Center" {
                 let view = UIView()
@@ -999,87 +1119,70 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
             // ✅ NEW: Ultra-Resilient Button Support
             // ✅ FIX: Restore isButton check from Dart to handle interactive Containers
             else if (node["isButton"] as? Bool ?? false) || type.contains("Button") {
-                // 1. Upgrade from standard UIView to a native UIButton
-                // This guarantees iOS treats it as an interactive element.
                 let buttonView = UIButton(type: .custom)
                 
-                // 🎨 Material 3 Styling based on sourceType or color
+                var buttonBgColor: UIColor = UIColor(red: 0x4F/255.0, green: 0x46/255.0, blue: 0xE5/255.0, alpha: 1.0)
                 if let colorInt = node["color"] as? Int {
-                    buttonView.backgroundColor = colorFromARGB(colorInt)
+                    buttonBgColor = colorFromARGB(colorInt)
                 } else if let colorInt64 = node["color"] as? Int64 {
-                    buttonView.backgroundColor = colorFromARGB(Int(colorInt64))
+                    buttonBgColor = colorFromARGB(Int(colorInt64))
                 } else if sourceType == "FilledTonalButton" {
-                    buttonView.backgroundColor = UIColor(red: 0xEA/255.0, green: 0xDD/255.0, blue: 0xFF/255.0, alpha: 1.0)
+                    buttonBgColor = UIColor(red: 0xEE/255.0, green: 0xF2/255.0, blue: 0xFF/255.0, alpha: 1.0)
                 } else if sourceType == "OutlinedButton" {
-                    buttonView.backgroundColor = .clear
-                    buttonView.layer.borderWidth = 1
-                    buttonView.layer.borderColor = UIColor.systemGray.cgColor
+                    buttonBgColor = .clear
+                    buttonView.layer.borderWidth = 1.5
+                    buttonView.layer.borderColor = UIColor.systemGray3.cgColor
                 } else if sourceType == "TextButton" {
-                    buttonView.backgroundColor = .clear
+                    buttonBgColor = .clear
                 } else if sourceType == "ElevatedButton" {
-                    buttonView.backgroundColor = .systemBackground
+                    buttonBgColor = .systemBackground
                     buttonView.layer.shadowColor = UIColor.black.cgColor
-                    buttonView.layer.shadowOpacity = 0.2
+                    buttonView.layer.shadowOpacity = 0.12
                     buttonView.layer.shadowOffset = CGSize(width: 0, height: 2)
                     buttonView.layer.shadowRadius = 4
                 } else if sourceType == "FloatingActionButton" {
-                    buttonView.backgroundColor = UIColor(red: 0xD0/255.0, green: 0xBC/255.0, blue: 0xFF/255.0, alpha: 1.0)
+                    buttonBgColor = UIColor(red: 0x4F/255.0, green: 0x46/255.0, blue: 0xE5/255.0, alpha: 1.0)
                     buttonView.layer.cornerRadius = 16
                 } else if sourceType == "IconButton" {
-                    buttonView.backgroundColor = .clear
-                    buttonView.layer.cornerRadius = 24 // Assume fixed size
-                } else {
-                    buttonView.backgroundColor = .systemBlue
-                    buttonView.layer.cornerRadius = 8
+                    buttonBgColor = .clear
+                    buttonView.layer.cornerRadius = 20
                 }
+                buttonView.backgroundColor = buttonBgColor
                 
-                let bRadius = CGFloat(node["borderRadius"] as? Double ?? 8.0)
+                let bRadius = CGFloat(node["borderRadius"] as? Double ?? 10.0)
                 buttonView.layer.cornerRadius = bRadius
                 buttonView.clipsToBounds = true
                 
-                // 2. Aggressive ID Fetching
-                // We check "id", "actionId", and "key" to ensure we catch whatever Dart sent.
-                let rawId = node["id"] ?? node["actionId"] ?? node["key"]
+                // CRITICAL FIX: Ensure buttons never get squeezed by horizontal stack layouts
+                buttonView.setContentCompressionResistancePriority(.required, for: .horizontal)
+                buttonView.setContentHuggingPriority(.required, for: .horizontal)
+                buttonView.setContentCompressionResistancePriority(.required, for: .vertical)
+                buttonView.setContentHuggingPriority(.required, for: .vertical)
+                buttonView.heightAnchor.constraint(greaterThanOrEqualToConstant: 36).isActive = true
+                buttonView.widthAnchor.constraint(greaterThanOrEqualToConstant: 68).isActive = true
                 
+                let rawId = node["id"] ?? node["actionId"] ?? node["key"]
                 if let rawId = rawId {
-                    let buttonId = "\(rawId)" // Safely convert to String
-                    print("🔗 Attaching tap gesture to Button ID: \(buttonId)")
-                    
+                    let buttonId = "\(rawId)"
                     let tap = ActionTapGesture(target: self, action: #selector(handleTap(_:)))
                     tap.buttonId = buttonId
                     buttonView.addGestureRecognizer(tap)
                     buttonView.isUserInteractionEnabled = true
-                } else {
-                    print("⚠️ WARNING: Button received from Dart without ANY id field!")
                 }
                 
                 if let children = node["children"] as? [[String: Any]], let firstChild = children.first {
                     let childView = renderWidget(node: firstChild)
-                    
-                    if let label = childView as? UILabel {
-                        // Adjust text color for transparent/white buttons
-                        if node["color"] == nil {
-                            if sourceType == "OutlinedButton" || sourceType == "TextButton" || sourceType == "ElevatedButton" {
-                                label.textColor = .systemBlue
-                            } else {
-                                label.textColor = .white
-                            }
-                        }
-                        label.font = .boldSystemFont(ofSize: 14)
-                    }
-                    
-                    // 3. THE CRITICAL FIX: Disable interaction on the entire child tree.
-                    // This forces the touch to pass completely through the Text/Container
-                    // and hit the Button underneath it.
                     childView.isUserInteractionEnabled = false
-                    
                     childView.translatesAutoresizingMaskIntoConstraints = false
                     buttonView.addSubview(childView)
                     
-                    let pTop = CGFloat(node["padding_top"] as? Double ?? 10.0)
-                    let pBottom = CGFloat(node["padding_bottom"] as? Double ?? 10.0)
-                    let pLeft = CGFloat(node["padding_left"] as? Double ?? 16.0)
-                    let pRight = CGFloat(node["padding_right"] as? Double ?? 16.0)
+                    let isDark = isDarkColor(buttonBgColor)
+                    applyContrastingTextColor(in: childView, isDarkBackground: isDark)
+                    
+                    let pTop = CGFloat(node["padding_top"] as? Double ?? 8.0)
+                    let pBottom = CGFloat(node["padding_bottom"] as? Double ?? 8.0)
+                    let pLeft = CGFloat(node["padding_left"] as? Double ?? 14.0)
+                    let pRight = CGFloat(node["padding_right"] as? Double ?? 14.0)
                     
                     NSLayoutConstraint.activate([
                         childView.topAnchor.constraint(equalTo: buttonView.topAnchor, constant: pTop),
@@ -1089,7 +1192,6 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                     ])
                 }
                 return buttonView
-                
             }
             
             // ✅ NEW: RemoteWidget Support
@@ -1137,11 +1239,26 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                 if let destinations = node["destinations"] as? [[String: Any]] {
                     for (index, dest) in destinations.enumerated() {
                         let label = dest["label"] as? String ?? "Item \(index)"
-                        let item = UITabBarItem(title: label, image: UIImage(systemName: "circle"), tag: index)
+                        let lower = label.lowercased()
+                        let iconName: String
+                        if lower.contains("task") || lower.contains("todo") {
+                            iconName = "checklist"
+                        } else if lower.contains("analytic") || lower.contains("stat") || lower.contains("report") {
+                            iconName = "chart.bar.fill"
+                        } else if lower.contains("setting") || lower.contains("pref") {
+                            iconName = "gearshape.fill"
+                        } else if lower.contains("new") || lower.contains("add") {
+                            iconName = "plus.circle.fill"
+                        } else {
+                            iconName = "square.grid.2x2.fill"
+                        }
+                        let item = UITabBarItem(title: label, image: UIImage(systemName: iconName), tag: index)
                         items.append(item)
                     }
                 }
                 tabBar.setItems(items, animated: false)
+                tabBar.tintColor = UIColor(red: 0x4F/255.0, green: 0x46/255.0, blue: 0xE5/255.0, alpha: 1.0)
+                tabBar.unselectedItemTintColor = .secondaryLabel
                 tabBar.delegate = self
                 tabBar.accessibilityIdentifier = node["id"] as? String
                 
@@ -1294,9 +1411,8 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
             // ✅ NEW: Chip Support (ActionChip, FilterChip, etc.)
             else if type == "ActionChip" || type == "FilterChip" || type == "ChoiceChip" || type == "InputChip" {
                 let chip = UIButton(type: .system)
-                chip.backgroundColor = .systemGray5
                 chip.layer.cornerRadius = 16
-                chip.contentEdgeInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+                chip.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
                 chip.accessibilityIdentifier = node["id"] as? String
                 
                 // Set label
@@ -1309,23 +1425,31 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                     }
                 }
                 
-                // FilterChip shows selected state
-                if type == "FilterChip" {
-                    let isSelected = node["selected"] as? Bool ?? false
+                let isSelected = node["selected"] as? Bool ?? false
+                if type == "FilterChip" || type == "ChoiceChip" {
                     if isSelected {
                         if let selColor = node["selectedColor"] as? Int {
                             chip.backgroundColor = colorFromARGB(selColor)
                         } else if let selColor64 = node["selectedColor"] as? Int64 {
                             chip.backgroundColor = colorFromARGB(Int(selColor64))
                         } else {
-                            chip.backgroundColor = .systemBlue
+                            chip.backgroundColor = UIColor(red: 0x4F/255.0, green: 0x46/255.0, blue: 0xE5/255.0, alpha: 1.0)
                         }
                         chip.setTitleColor(.white, for: .normal)
+                        chip.layer.borderWidth = 0
                     } else {
-                        chip.backgroundColor = .systemGray5
+                        chip.backgroundColor = .secondarySystemBackground
                         chip.setTitleColor(.label, for: .normal)
+                        chip.layer.borderWidth = 1
+                        chip.layer.borderColor = UIColor.systemGray4.cgColor
                     }
+                } else {
+                    chip.backgroundColor = .secondarySystemBackground
+                    chip.setTitleColor(.label, for: .normal)
+                    chip.layer.borderWidth = 1
+                    chip.layer.borderColor = UIColor.systemGray4.cgColor
                 }
+                chip.titleLabel?.font = .systemFont(ofSize: 13, weight: isSelected ? .bold : .medium)
                 
                 chip.addTarget(self, action: #selector(handleChipTap(_:)), for: .touchUpInside)
                 return chip
@@ -1334,7 +1458,7 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
             else if type == "Card" {
                 let card = UIView()
                 let variant = node["variant"] as? String ?? "elevated"
-                let borderRadius = node["borderRadius"] as? Double ?? 12.0
+                let borderRadius = node["borderRadius"] as? Double ?? 14.0
                 card.layer.cornerRadius = CGFloat(borderRadius)
                 card.clipsToBounds = false
                 
@@ -1344,14 +1468,10 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                     card.backgroundColor = colorFromARGB(Int(colorInt64))
                 } else {
                     switch variant {
-                    case "elevated":
-                        card.backgroundColor = .systemBackground
                     case "filled":
                         card.backgroundColor = UIColor(red: 0xE8/255.0, green: 0xDE/255.0, blue: 0xFF/255.0, alpha: 1.0)
                     case "outlined":
                         card.backgroundColor = .systemBackground
-                        card.layer.borderWidth = 1
-                        card.layer.borderColor = UIColor.systemGray.cgColor
                     default:
                         card.backgroundColor = .systemBackground
                     }
@@ -1359,9 +1479,14 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                 
                 if variant == "elevated" {
                     card.layer.shadowColor = UIColor.black.cgColor
-                    card.layer.shadowOpacity = 0.08
-                    card.layer.shadowOffset = CGSize(width: 0, height: 2)
-                    card.layer.shadowRadius = 4
+                    card.layer.shadowOpacity = 0.07
+                    card.layer.shadowOffset = CGSize(width: 0, height: 3)
+                    card.layer.shadowRadius = 8
+                    card.layer.borderWidth = 0.5
+                    card.layer.borderColor = UIColor.systemGray5.cgColor
+                } else if variant == "outlined" {
+                    card.layer.borderWidth = 1
+                    card.layer.borderColor = UIColor.systemGray4.cgColor
                 }
                 
                 let hasChildPadding = (node["children"] as? [[String: Any]])?.first?["type"] as? String == "Padding"
@@ -1524,25 +1649,20 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                 textField.text = node["value"] as? String ?? ""
                 textField.placeholder = node["hintText"] as? String ?? ""
                 textField.borderStyle = .none
-                textField.font = .systemFont(ofSize: 16)
+                textField.font = .systemFont(ofSize: 15)
+                textField.backgroundColor = .secondarySystemGroupedBackground
+                textField.layer.cornerRadius = 12
+                textField.layer.borderWidth = 1
+                textField.layer.borderColor = UIColor.systemGray5.cgColor
+                textField.clipsToBounds = true
                 
-                if variant == "outlined" {
-                    textField.layer.borderWidth = 1
-                    textField.layer.borderColor = UIColor.systemGray.cgColor
-                    textField.layer.cornerRadius = 8
-                    textField.backgroundColor = .clear
-                } else {
-                    textField.backgroundColor = .systemGray6
-                    textField.layer.cornerRadius = 8
-                    textField.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-                }
-                
-                let paddingView = UIView(frame: CGRect(x: 0, y: 0, width: 12, height: 44))
+                let paddingView = UIView(frame: CGRect(x: 0, y: 0, width: 14, height: 46))
                 textField.leftView = paddingView
                 textField.leftViewMode = .always
-                textField.rightView = UIView(frame: CGRect(x: 0, y: 0, width: 12, height: 44))
+                let rightPaddingView = UIView(frame: CGRect(x: 0, y: 0, width: 14, height: 46))
+                textField.rightView = rightPaddingView
                 textField.rightViewMode = .always
-                textField.heightAnchor.constraint(equalToConstant: 44).isActive = true
+                textField.heightAnchor.constraint(equalToConstant: 46).isActive = true
                 
                 if node["obscureText"] as? Bool ?? false {
                     textField.isSecureTextEntry = true
@@ -2200,13 +2320,32 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
             let b = CGFloat(argb & 0xFF) / 255.0
             return UIColor(red: r, green: g, blue: b, alpha: a)
         }
+
+        private func isDarkColor(_ color: UIColor) -> Bool {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            if color.getRed(&r, green: &g, blue: &b, alpha: &a) {
+                let luminance = 0.299 * r + 0.587 * g + 0.114 * b
+                return luminance < 0.65
+            }
+            return true
+        }
+
+        private func applyContrastingTextColor(in view: UIView, isDarkBackground: Bool) {
+            if let label = view as? UILabel {
+                label.textColor = isDarkBackground ? .white : UIColor(red: 0.06, green: 0.09, blue: 0.16, alpha: 1.0)
+                label.numberOfLines = 1
+            }
+            for subview in view.subviews {
+                applyContrastingTextColor(in: subview, isDarkBackground: isDarkBackground)
+            }
+        }
         
         private func sendActionToDart(buttonId: String, index: Int? = nil, value: Any? = nil) {
             if !useRemoteServer {
                 handleLocalAction(id: buttonId, value: value)
                 return
             }
-            guard let url = URL(string: "https://custom-frameworks-neon-framework.iix8qf.easypanel.host/action") else { return }
+            guard let url = URL(string: "\(activeServerUrl)/action") else { return }
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -2221,7 +2360,7 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
             
             request.httpBody = try? JSONSerialization.data(withJSONObject: body)
             
-            print("🚀 Sending POST request to Dart engine...")
+            print("🚀 Sending POST request to Dart engine at \(activeServerUrl)...")
             
             let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
                 if let error = error {
@@ -2238,21 +2377,23 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                 print("✅ Received response from Dart.")
                 
                 DispatchQueue.main.async {
-                    // Check if the response is a valid widget tree (must have a "type" field)
                     if json["type"] != nil {
-                        print("🎨 Response is a widget tree. Redrawing screen!")
+                        print("🎨 Response received. Redrawing screen!")
                         self.view.subviews.forEach { $0.removeFromSuperview() }
                         
-                        let rootView = self.renderWidget(node: json)
+                        let treeNode = (json["tree"] as? [String: Any]) ?? (json["root"] as? [String: Any]) ?? json
+                        let rootView = self.renderWidget(node: treeNode)
                         rootView.translatesAutoresizingMaskIntoConstraints = false
                         self.view.addSubview(rootView)
                         
                         NSLayoutConstraint.activate([
-                            rootView.centerXAnchor.constraint(equalTo: self.view.centerXAnchor),
-                            rootView.centerYAnchor.constraint(equalTo: self.view.centerYAnchor)
+                            rootView.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+                            rootView.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
+                            rootView.topAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.topAnchor),
+                            rootView.bottomAnchor.constraint(equalTo: self.view.bottomAnchor)
                         ])
                     } else {
-                        print("ℹ️ Response is not a widget tree (likely a status message). Fetching full tree...")
+                        print("ℹ️ Response is not a widget tree. Fetching full tree...")
                         self.fetchUiTree()
                     }
                 }

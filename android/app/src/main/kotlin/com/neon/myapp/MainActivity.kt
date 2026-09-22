@@ -1063,11 +1063,12 @@ class MainActivity : Activity() {
       type == "Expanded" -> {
         val frame = android.widget.FrameLayout(this)
         val flex = node.optInt("flex", 1)
-        frame.layoutParams = LinearLayout.LayoutParams(
-          ViewGroup.LayoutParams.MATCH_PARENT,
+        val lp = LinearLayout.LayoutParams(
+          0,
           ViewGroup.LayoutParams.WRAP_CONTENT,
           flex.toFloat()
         )
+        frame.layoutParams = lp
         val children = node.optJSONArray("children")
         if (children != null && children.length() > 0) {
           val childView = renderWidget(children.getJSONObject(0))
@@ -1079,6 +1080,48 @@ class MainActivity : Activity() {
           frame.addView(childView)
         }
         frame
+      }
+      type == "Stack" -> {
+        val frame = android.widget.FrameLayout(this)
+        frame.layoutParams = ViewGroup.LayoutParams(
+          ViewGroup.LayoutParams.WRAP_CONTENT,
+          ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        val children = node.optJSONArray("children")
+        if (children != null) {
+          for (i in 0 until children.length()) {
+            val childView = renderWidget(children.getJSONObject(i))
+            frame.addView(childView)
+          }
+        }
+        frame
+      }
+      type == "Badge" || type == "BadgeLabel" -> {
+        val textView = TextView(this)
+        val density = resources.displayMetrics.density
+        var labelText = node.optString("label")
+        if (labelText.isEmpty()) {
+          labelText = node.optString("text")
+        }
+        val children = node.optJSONArray("children")
+        if (labelText.isEmpty() && children != null && children.length() > 0) {
+          labelText = children.getJSONObject(0).optString("text")
+        }
+        textView.text = labelText
+        textView.textSize = 11f
+        textView.setTypeface(null, android.graphics.Typeface.BOLD)
+        
+        val bgInt = if (node.has("backgroundColor")) node.getInt("backgroundColor") else if (node.has("color")) node.getInt("color") else 0xFF4F46E5.toInt()
+        val textColInt = if (node.has("labelColor")) node.getInt("labelColor") else Color.WHITE
+        textView.setTextColor(textColInt)
+        
+        val shape = android.graphics.drawable.GradientDrawable()
+        shape.shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+        shape.cornerRadius = 8 * density
+        shape.setColor(bgInt)
+        textView.background = shape
+        textView.setPadding((8 * density).toInt(), (3 * density).toInt(), (8 * density).toInt(), (3 * density).toInt())
+        textView
       }
       type == "Center" -> {
         val frame = android.widget.FrameLayout(this)
@@ -1241,7 +1284,7 @@ class MainActivity : Activity() {
             if (node.has("color")) {
               background.setColor(node.getInt("color"))
             } else if (isButtonClickable) {
-              background.setColor(Color.BLUE)
+              background.setColor(0xFF4F46E5.toInt())
             } else {
               background.setColor(0xFFEEEEEE.toInt())
             }
@@ -1254,18 +1297,27 @@ class MainActivity : Activity() {
         val width = if (node.has("width")) (node.getDouble("width") * density).toInt() else if (isButtonClickable) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT
         val height = if (node.has("height")) (node.getDouble("height") * density).toInt() else if (isButtonClickable) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT
         container.layoutParams = ViewGroup.MarginLayoutParams(width, height)
+        if (isButtonClickable) {
+          container.minimumWidth = (72 * density).toInt()
+          container.minimumHeight = (36 * density).toInt()
+        }
 
         // Padding
-        val pLeft = (node.optDouble("padding_left", if (isButtonClickable) 16.0 else 0.0) * density).toInt()
-        val pTop = (node.optDouble("padding_top", if (isButtonClickable) 12.0 else 0.0) * density).toInt()
-        val pRight = (node.optDouble("padding_right", if (isButtonClickable) 16.0 else 0.0) * density).toInt()
-        val pBottom = (node.optDouble("padding_bottom", if (isButtonClickable) 12.0 else 0.0) * density).toInt()
+        val pLeft = (node.optDouble("padding_left", if (isButtonClickable) 14.0 else 0.0) * density).toInt()
+        val pTop = (node.optDouble("padding_top", if (isButtonClickable) 8.0 else 0.0) * density).toInt()
+        val pRight = (node.optDouble("padding_right", if (isButtonClickable) 14.0 else 0.0) * density).toInt()
+        val pBottom = (node.optDouble("padding_bottom", if (isButtonClickable) 8.0 else 0.0) * density).toInt()
         container.setPadding(pLeft, pTop, pRight, pBottom)
 
         // Render child
         val children = node.optJSONArray("children")
         if (children != null && children.length() > 0) {
           val childView = renderWidget(children.getJSONObject(0))
+          if (childView is TextView && isButtonClickable && sourceType != "TextButton" && sourceType != "OutlinedButton") {
+            childView.isSingleLine = true
+            childView.setTextColor(Color.WHITE)
+            childView.setTypeface(null, android.graphics.Typeface.BOLD)
+          }
           val params = android.widget.FrameLayout.LayoutParams(
             if (isButtonClickable) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
             if (isButtonClickable) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT
