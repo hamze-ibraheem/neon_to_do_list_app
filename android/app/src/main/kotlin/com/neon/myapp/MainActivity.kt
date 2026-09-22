@@ -42,6 +42,15 @@ class MainActivity : Activity() {
   private var filterStatus = "all" // "all", "active", "completed"
   private var activeCategoryFilter = "All"
   private val categories = listOf("Work", "Personal", "Study", "Shopping", "Health")
+  private var currentRoute = "/tasks"
+  private var selectedTaskId: String? = null
+  private var newDetailTitle = ""
+  private var newDetailDesc = ""
+  private var newDetailPriority = "medium"
+  private var newDetailCategory = "Work"
+  private var newDetailCompleted = false
+  private var diffingEnabled = true
+  private var exportedSnapshotPreview: String? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -105,13 +114,50 @@ class MainActivity : Activity() {
   }
 
   private fun renderLocalTree() {
-    val tree = buildTodoTree()
+    val tree = buildCurrentTree()
     val rootView = renderWidget(tree)
     rootView.layoutParams = ViewGroup.LayoutParams(
       ViewGroup.LayoutParams.MATCH_PARENT,
       ViewGroup.LayoutParams.MATCH_PARENT
     )
     setContentView(rootView)
+  }
+
+  private fun buildCurrentTree(): JSONObject {
+    return when {
+      currentRoute == "/new-task" -> buildNewTaskTree()
+      currentRoute.startsWith("/tasks/") -> {
+        val id = selectedTaskId ?: currentRoute.removePrefix("/tasks/")
+        buildTaskDetailTree(id)
+      }
+      currentRoute == "/analytics" -> buildAnalyticsTree()
+      currentRoute == "/settings" -> buildSettingsTree()
+      else -> buildTodoTree()
+    }
+  }
+
+  private fun buildNavBar(selectedIndex: Int): JSONObject {
+    val nav = JSONObject().apply {
+      put("id", "main_nav")
+      put("type", "NavigationBar")
+      put("selectedIndex", selectedIndex)
+      val dests = JSONArray()
+      dests.put(JSONObject().apply {
+        put("label", "Tasks")
+        put("icon", JSONObject().apply { put("text", "checklist") })
+      })
+      dests.put(JSONObject().apply {
+        put("label", "Analytics")
+        put("icon", JSONObject().apply { put("text", "chart.bar.fill") })
+      })
+      dests.put(JSONObject().apply {
+        put("label", "Settings")
+        put("icon", JSONObject().apply { put("text", "gearshape.fill") })
+      })
+      put("destinations", dests)
+      put("children", JSONArray())
+    }
+    return nav
   }
 
   private fun buildTodoTree(): JSONObject {
@@ -150,6 +196,28 @@ class MainActivity : Activity() {
         put("label", "$activeCount")
       }
       actions.put(badge)
+      val newBtn = JSONObject().apply {
+        put("id", "btn_open_new_task")
+        put("type", "Container")
+        put("sourceType", "Button")
+        put("isButton", true)
+        put("color", 0x33FFFFFF.toLong())
+        put("padding_top", 6.0)
+        put("padding_bottom", 6.0)
+        put("padding_left", 12.0)
+        put("padding_right", 12.0)
+        val btnChildren = JSONArray()
+        btnChildren.put(JSONObject().apply {
+          put("type", "Text")
+          put("text", "+ New")
+          put("fontWeight", "bold")
+          put("color", 0xFFFFFFFF.toLong())
+          put("fontSize", 13.0)
+          put("children", JSONArray())
+        })
+        put("children", btnChildren)
+      }
+      actions.put(newBtn)
       put("actions", actions)
       put("children", JSONArray())
     }
@@ -832,6 +900,36 @@ class MainActivity : Activity() {
                         put("children", JSONArray())
                       })
 
+                      // Edit Button (Edit →)
+                      val editBtn = JSONObject().apply {
+                        put("id", "btn_view_task_${item.id}")
+                        put("type", "Container")
+                        put("sourceType", "Button")
+                        put("color", 0xFFEEF2FF.toLong())
+                        put("isButton", true)
+                        put("padding_top", 6.0)
+                        put("padding_bottom", 6.0)
+                        put("padding_left", 10.0)
+                        put("padding_right", 10.0)
+                        val ebChildren = JSONArray()
+                        ebChildren.put(JSONObject().apply {
+                          put("type", "Text")
+                          put("text", "Edit →")
+                          put("fontSize", 12.0)
+                          put("fontWeight", "bold")
+                          put("color", 0xFF4F46E5.toLong())
+                          put("children", JSONArray())
+                        })
+                        put("children", ebChildren)
+                      }
+                      trItems.put(editBtn)
+
+                      trItems.put(JSONObject().apply {
+                        put("type", "SizedBox")
+                        put("width", 6.0)
+                        put("children", JSONArray())
+                      })
+
                       // Delete Button (✕)
                       val delBtn = JSONObject().apply {
                         put("id", "btn_del_${item.id}")
@@ -885,15 +983,1043 @@ class MainActivity : Activity() {
       put("children", expChildren)
     }
     rootChildren.put(expanded)
+    rootChildren.put(buildNavBar(0))
+
+    root.put("children", rootChildren)
+    return root
+  }
+  private fun buildNewTaskTree(): JSONObject {
+    val root = JSONObject().apply {
+      put("id", "root_new_task")
+      put("type", "Column")
+      put("axis", "vertical")
+    }
+    val rootChildren = JSONArray()
+
+    // Top Bar
+    val topBar = JSONObject().apply {
+      put("type", "Container")
+      put("color", 0xFFFFFFFF.toLong())
+      put("padding_top", 12.0)
+      put("padding_bottom", 12.0)
+      put("padding_left", 16.0)
+      put("padding_right", 16.0)
+      val tbRow = JSONObject().apply {
+        put("type", "Row")
+        put("axis", "horizontal")
+        val tbItems = JSONArray()
+        tbItems.put(JSONObject().apply {
+          put("id", "btn_cancel_new_task")
+          put("type", "Container")
+          put("sourceType", "Button")
+          put("color", 0xFF64748B.toLong())
+          put("isButton", true)
+          put("padding_top", 8.0)
+          put("padding_bottom", 8.0)
+          put("padding_left", 14.0)
+          put("padding_right", 14.0)
+          val c = JSONArray()
+          c.put(JSONObject().apply {
+            put("type", "Text")
+            put("text", "Cancel")
+            put("color", 0xFFFFFFFF.toLong())
+            put("fontWeight", "bold")
+            put("children", JSONArray())
+          })
+          put("children", c)
+        })
+        tbItems.put(JSONObject().apply {
+          put("type", "Expanded")
+          put("flex", 1)
+          val c = JSONArray()
+          c.put(JSONObject().apply {
+            put("type", "Text")
+            put("text", "Create New Task")
+            put("fontSize", 18.0)
+            put("fontWeight", "bold")
+            put("color", 0xFF0F172A.toLong())
+            put("children", JSONArray())
+          })
+          put("children", c)
+        })
+        tbItems.put(JSONObject().apply {
+          put("id", "btn_create_task_submit")
+          put("type", "Container")
+          put("sourceType", "Button")
+          put("color", 0xFF4F46E5.toLong())
+          put("isButton", true)
+          put("padding_top", 8.0)
+          put("padding_bottom", 8.0)
+          put("padding_left", 14.0)
+          put("padding_right", 14.0)
+          val c = JSONArray()
+          c.put(JSONObject().apply {
+            put("type", "Text")
+            put("text", "Create")
+            put("color", 0xFFFFFFFF.toLong())
+            put("fontWeight", "bold")
+            put("children", JSONArray())
+          })
+          put("children", c)
+        })
+        put("children", tbItems)
+      }
+      val c = JSONArray()
+      c.put(tbRow)
+      put("children", c)
+    }
+    rootChildren.put(topBar)
+
+    // Form Body
+    val expanded = JSONObject().apply {
+      put("type", "Expanded")
+      put("flex", 1)
+      val expC = JSONArray()
+      val scroll = JSONObject().apply {
+        put("type", "SingleChildScrollView")
+        put("scrollDirection", "vertical")
+        put("padding_top", 12.0)
+        put("padding_bottom", 24.0)
+        put("padding_left", 16.0)
+        put("padding_right", 16.0)
+        val sChildren = JSONArray()
+        val formCol = JSONObject().apply {
+          put("type", "Column")
+          put("axis", "vertical")
+          val fItems = JSONArray()
+
+          // Fields Card
+          val fCard = JSONObject().apply {
+            put("type", "Card")
+            put("variant", "elevated")
+            put("borderRadius", 14.0)
+            put("color", 0xFFFFFFFF.toLong())
+            put("padding_top", 14.0)
+            put("padding_bottom", 14.0)
+            put("padding_left", 16.0)
+            put("padding_right", 16.0)
+            val c = JSONArray()
+            val col = JSONObject().apply {
+              put("type", "Column")
+              put("axis", "vertical")
+              val items = JSONArray()
+              items.put(JSONObject().apply {
+                put("type", "Text")
+                put("text", "Task Title")
+                put("fontSize", 14.0)
+                put("fontWeight", "bold")
+                put("color", 0xFF0F172A.toLong())
+                put("children", JSONArray())
+              })
+              items.put(JSONObject().apply {
+                put("id", "tf_new_task")
+                put("type", "TextField")
+                put("hintText", "What needs to be done?")
+                put("text", newTaskTitle)
+                put("children", JSONArray())
+              })
+              items.put(JSONObject().apply {
+                put("type", "SizedBox")
+                put("height", 12.0)
+                put("children", JSONArray())
+              })
+              items.put(JSONObject().apply {
+                put("type", "Text")
+                put("text", "Description & Notes")
+                put("fontSize", 14.0)
+                put("fontWeight", "bold")
+                put("color", 0xFF0F172A.toLong())
+                put("children", JSONArray())
+              })
+              items.put(JSONObject().apply {
+                put("id", "tf_new_desc")
+                put("type", "TextField")
+                put("hintText", "Add details or context...")
+                put("text", newDetailDesc)
+                put("children", JSONArray())
+              })
+              put("children", items)
+            }
+            c.put(col)
+            put("children", c)
+          }
+          fItems.put(fCard)
+          fItems.put(JSONObject().apply { put("type", "SizedBox"); put("height", 14.0); put("children", JSONArray()) })
+
+          // Priority Card
+          val pCard = JSONObject().apply {
+            put("type", "Card")
+            put("variant", "elevated")
+            put("borderRadius", 14.0)
+            put("color", 0xFFFFFFFF.toLong())
+            put("padding_top", 14.0)
+            put("padding_bottom", 14.0)
+            put("padding_left", 16.0)
+            put("padding_right", 16.0)
+            val c = JSONArray()
+            val col = JSONObject().apply {
+              put("type", "Column")
+              put("axis", "vertical")
+              val items = JSONArray()
+              items.put(JSONObject().apply {
+                put("type", "Text")
+                put("text", "Priority Level")
+                put("fontSize", 14.0)
+                put("fontWeight", "bold")
+                put("color", 0xFF0F172A.toLong())
+                put("children", JSONArray())
+              })
+              val row = JSONObject().apply {
+                put("type", "Row")
+                put("axis", "horizontal")
+                val rItems = JSONArray()
+                val prios = listOf(Triple("low", "Low", selectedPriority == "low"), Triple("med", "Medium", selectedPriority == "medium"), Triple("high", "High", selectedPriority == "high"))
+                for ((pId, pLabel, pSel) in prios) {
+                  rItems.put(JSONObject().apply {
+                    put("id", "chip_prio_$pId")
+                    put("type", "FilterChip")
+                    put("label", pLabel)
+                    put("selected", pSel)
+                    put("children", JSONArray())
+                  })
+                  rItems.put(JSONObject().apply { put("type", "SizedBox"); put("width", 8.0); put("children", JSONArray()) })
+                }
+                put("children", rItems)
+              }
+              items.put(row)
+              put("children", items)
+            }
+            c.put(col)
+            put("children", c)
+          }
+          fItems.put(pCard)
+          fItems.put(JSONObject().apply { put("type", "SizedBox"); put("height", 14.0); put("children", JSONArray()) })
+
+          // Category Card
+          val catCard = JSONObject().apply {
+            put("type", "Card")
+            put("variant", "elevated")
+            put("borderRadius", 14.0)
+            put("color", 0xFFFFFFFF.toLong())
+            put("padding_top", 14.0)
+            put("padding_bottom", 14.0)
+            put("padding_left", 16.0)
+            put("padding_right", 16.0)
+            val c = JSONArray()
+            val col = JSONObject().apply {
+              put("type", "Column")
+              put("axis", "vertical")
+              val items = JSONArray()
+              items.put(JSONObject().apply {
+                put("type", "Text")
+                put("text", "Category")
+                put("fontSize", 14.0)
+                put("fontWeight", "bold")
+                put("color", 0xFF0F172A.toLong())
+                put("children", JSONArray())
+              })
+              val catRow = JSONObject().apply {
+                put("type", "Row")
+                put("axis", "horizontal")
+                val rItems = JSONArray()
+                for (cat in categories) {
+                  rItems.put(JSONObject().apply {
+                    put("id", "chip_cat_$cat")
+                    put("type", "FilterChip")
+                    put("label", cat)
+                    put("selected", selectedCategory == cat)
+                    put("children", JSONArray())
+                  })
+                  rItems.put(JSONObject().apply { put("type", "SizedBox"); put("width", 6.0); put("children", JSONArray()) })
+                }
+                put("children", rItems)
+              }
+              items.put(catRow)
+              put("children", items)
+            }
+            c.put(col)
+            put("children", c)
+          }
+          fItems.put(catCard)
+          fItems.put(JSONObject().apply { put("type", "SizedBox"); put("height", 18.0); put("children", JSONArray()) })
+
+          // Sticky CTA
+          val cta = JSONObject().apply {
+            put("id", "btn_create_task_bottom")
+            put("type", "Container")
+            put("sourceType", "Button")
+            put("color", 0xFF4F46E5.toLong())
+            put("isButton", true)
+            put("padding_top", 14.0)
+            put("padding_bottom", 14.0)
+            put("padding_left", 16.0)
+            put("padding_right", 16.0)
+            val c = JSONArray()
+            c.put(JSONObject().apply {
+              put("type", "Text")
+              put("text", "+ Create Task")
+              put("fontSize", 16.0)
+              put("fontWeight", "bold")
+              put("color", 0xFFFFFFFF.toLong())
+              put("children", JSONArray())
+            })
+            put("children", c)
+          }
+          fItems.put(cta)
+
+          put("children", fItems)
+        }
+        sChildren.put(formCol)
+        put("children", sChildren)
+      }
+      expC.put(scroll)
+      put("children", expC)
+    }
+    rootChildren.put(expanded)
 
     root.put("children", rootChildren)
     return root
   }
 
-  private fun handleLocalAction(id: String, value: Any? = null) {
+  private fun buildTaskDetailTree(taskId: String): JSONObject {
+    val task = todoTasks.find { it.id == taskId }
+    if (task == null) {
+      val notFound = JSONObject().apply {
+        put("id", "root_not_found")
+        put("type", "Column")
+        put("axis", "vertical")
+        val c = JSONArray()
+        c.put(JSONObject().apply {
+          put("type", "Text")
+          put("text", "Task Not Found")
+          put("fontSize", 20.0)
+          put("fontWeight", "bold")
+          put("children", JSONArray())
+        })
+        c.put(JSONObject().apply {
+          put("id", "btn_not_found_back")
+          put("type", "Container")
+          put("sourceType", "Button")
+          put("color", 0xFF4F46E5.toLong())
+          put("isButton", true)
+          val bc = JSONArray()
+          bc.put(JSONObject().apply {
+            put("type", "Text")
+            put("text", "Return to Tasks")
+            put("color", 0xFFFFFFFF.toLong())
+            put("children", JSONArray())
+          })
+          put("children", bc)
+        })
+        put("children", c)
+      }
+      return notFound
+    }
+
+    val root = JSONObject().apply {
+      put("id", "root_task_detail")
+      put("type", "Column")
+      put("axis", "vertical")
+    }
+    val rootChildren = JSONArray()
+
+    // Top Bar
+    val topBar = JSONObject().apply {
+      put("type", "Container")
+      put("color", 0xFFFFFFFF.toLong())
+      put("padding_top", 12.0)
+      put("padding_bottom", 12.0)
+      put("padding_left", 16.0)
+      put("padding_right", 16.0)
+      val tbRow = JSONObject().apply {
+        put("type", "Row")
+        put("axis", "horizontal")
+        val tbItems = JSONArray()
+        tbItems.put(JSONObject().apply {
+          put("id", "btn_back_task_detail")
+          put("type", "Container")
+          put("sourceType", "Button")
+          put("color", 0xFF64748B.toLong())
+          put("isButton", true)
+          put("padding_top", 8.0)
+          put("padding_bottom", 8.0)
+          put("padding_left", 14.0)
+          put("padding_right", 14.0)
+          val c = JSONArray()
+          c.put(JSONObject().apply {
+            put("type", "Text")
+            put("text", "← Back")
+            put("color", 0xFFFFFFFF.toLong())
+            put("fontWeight", "bold")
+            put("children", JSONArray())
+          })
+          put("children", c)
+        })
+        tbItems.put(JSONObject().apply {
+          put("type", "Expanded")
+          put("flex", 1)
+          val c = JSONArray()
+          c.put(JSONObject().apply {
+            put("type", "Text")
+            put("text", "Task Details")
+            put("fontSize", 18.0)
+            put("fontWeight", "bold")
+            put("color", 0xFF0F172A.toLong())
+            put("children", JSONArray())
+          })
+          put("children", c)
+        })
+        tbItems.put(JSONObject().apply {
+          put("id", "btn_delete_task_detail")
+          put("type", "Container")
+          put("sourceType", "Button")
+          put("color", 0xFFEF4444.toLong())
+          put("isButton", true)
+          put("padding_top", 8.0)
+          put("padding_bottom", 8.0)
+          put("padding_left", 14.0)
+          put("padding_right", 14.0)
+          val c = JSONArray()
+          c.put(JSONObject().apply {
+            put("type", "Text")
+            put("text", "Delete")
+            put("color", 0xFFFFFFFF.toLong())
+            put("fontWeight", "bold")
+            put("children", JSONArray())
+          })
+          put("children", c)
+        })
+        put("children", tbItems)
+      }
+      val c = JSONArray()
+      c.put(tbRow)
+      put("children", c)
+    }
+    rootChildren.put(topBar)
+
+    // Form
+    val expanded = JSONObject().apply {
+      put("type", "Expanded")
+      put("flex", 1)
+      val expC = JSONArray()
+      val scroll = JSONObject().apply {
+        put("type", "SingleChildScrollView")
+        put("scrollDirection", "vertical")
+        put("padding_top", 12.0)
+        put("padding_bottom", 24.0)
+        put("padding_left", 16.0)
+        put("padding_right", 16.0)
+        val sChildren = JSONArray()
+        val formCol = JSONObject().apply {
+          put("type", "Column")
+          put("axis", "vertical")
+          val fItems = JSONArray()
+
+          // Title Card
+          val titleCard = JSONObject().apply {
+            put("type", "Card")
+            put("variant", "elevated")
+            put("borderRadius", 14.0)
+            put("color", 0xFFFFFFFF.toLong())
+            put("padding_top", 14.0)
+            put("padding_bottom", 14.0)
+            put("padding_left", 16.0)
+            put("padding_right", 16.0)
+            val c = JSONArray()
+            val col = JSONObject().apply {
+              put("type", "Column")
+              put("axis", "vertical")
+              val items = JSONArray()
+              items.put(JSONObject().apply {
+                put("type", "Text")
+                put("text", "Task Title")
+                put("fontSize", 14.0)
+                put("fontWeight", "bold")
+                put("color", 0xFF0F172A.toLong())
+                put("children", JSONArray())
+              })
+              items.put(JSONObject().apply {
+                put("id", "tf_detail_title")
+                put("type", "TextField")
+                put("text", if (newDetailTitle.isEmpty()) task.title else newDetailTitle)
+                put("children", JSONArray())
+              })
+              put("children", items)
+            }
+            c.put(col)
+            put("children", c)
+          }
+          fItems.put(titleCard)
+          fItems.put(JSONObject().apply { put("type", "SizedBox"); put("height", 14.0); put("children", JSONArray()) })
+
+          // Priority Card
+          val prioCard = JSONObject().apply {
+            put("type", "Card")
+            put("variant", "elevated")
+            put("borderRadius", 14.0)
+            put("color", 0xFFFFFFFF.toLong())
+            put("padding_top", 14.0)
+            put("padding_bottom", 14.0)
+            put("padding_left", 16.0)
+            put("padding_right", 16.0)
+            val c = JSONArray()
+            val col = JSONObject().apply {
+              put("type", "Column")
+              put("axis", "vertical")
+              val items = JSONArray()
+              items.put(JSONObject().apply {
+                put("type", "Text")
+                put("text", "Priority Level")
+                put("fontSize", 14.0)
+                put("fontWeight", "bold")
+                put("color", 0xFF0F172A.toLong())
+                put("children", JSONArray())
+              })
+              val row = JSONObject().apply {
+                put("type", "Row")
+                put("axis", "horizontal")
+                val rItems = JSONArray()
+                val prios = listOf(Triple("low", "Low", newDetailPriority == "low"), Triple("med", "Medium", newDetailPriority == "medium"), Triple("high", "High", newDetailPriority == "high"))
+                for ((pId, pLabel, pSel) in prios) {
+                  rItems.put(JSONObject().apply {
+                    put("id", "detail_prio_$pId")
+                    put("type", "FilterChip")
+                    put("label", pLabel)
+                    put("selected", pSel)
+                    put("children", JSONArray())
+                  })
+                  rItems.put(JSONObject().apply { put("type", "SizedBox"); put("width", 8.0); put("children", JSONArray()) })
+                }
+                put("children", rItems)
+              }
+              items.put(row)
+              put("children", items)
+            }
+            c.put(col)
+            put("children", c)
+          }
+          fItems.put(prioCard)
+          fItems.put(JSONObject().apply { put("type", "SizedBox"); put("height", 14.0); put("children", JSONArray()) })
+
+          // Category Card
+          val catCard = JSONObject().apply {
+            put("type", "Card")
+            put("variant", "elevated")
+            put("borderRadius", 14.0)
+            put("color", 0xFFFFFFFF.toLong())
+            put("padding_top", 14.0)
+            put("padding_bottom", 14.0)
+            put("padding_left", 16.0)
+            put("padding_right", 16.0)
+            val c = JSONArray()
+            val col = JSONObject().apply {
+              put("type", "Column")
+              put("axis", "vertical")
+              val items = JSONArray()
+              items.put(JSONObject().apply {
+                put("type", "Text")
+                put("text", "Category")
+                put("fontSize", 14.0)
+                put("fontWeight", "bold")
+                put("color", 0xFF0F172A.toLong())
+                put("children", JSONArray())
+              })
+              val catRow = JSONObject().apply {
+                put("type", "Row")
+                put("axis", "horizontal")
+                val rItems = JSONArray()
+                for (cat in categories) {
+                  rItems.put(JSONObject().apply {
+                    put("id", "detail_cat_$cat")
+                    put("type", "FilterChip")
+                    put("label", cat)
+                    put("selected", newDetailCategory == cat)
+                    put("children", JSONArray())
+                  })
+                  rItems.put(JSONObject().apply { put("type", "SizedBox"); put("width", 6.0); put("children", JSONArray()) })
+                }
+                put("children", rItems)
+              }
+              items.put(catRow)
+              put("children", items)
+            }
+            c.put(col)
+            put("children", c)
+          }
+          fItems.put(catCard)
+          fItems.put(JSONObject().apply { put("type", "SizedBox"); put("height", 14.0); put("children", JSONArray()) })
+
+          // Completion Switch Card
+          val compCard = JSONObject().apply {
+            put("type", "Card")
+            put("variant", "elevated")
+            put("borderRadius", 14.0)
+            put("color", 0xFFFFFFFF.toLong())
+            put("padding_top", 14.0)
+            put("padding_bottom", 14.0)
+            put("padding_left", 16.0)
+            put("padding_right", 16.0)
+            val c = JSONArray()
+            val row = JSONObject().apply {
+              put("type", "Row")
+              put("axis", "horizontal")
+              val rItems = JSONArray()
+              rItems.put(JSONObject().apply {
+                put("type", "Expanded")
+                put("flex", 1)
+                val tc = JSONArray()
+                tc.put(JSONObject().apply {
+                  put("type", "Text")
+                  put("text", "Mark as Completed")
+                  put("fontSize", 15.0)
+                  put("fontWeight", "bold")
+                  put("color", 0xFF0F172A.toLong())
+                  put("children", JSONArray())
+                })
+                put("children", tc)
+              })
+              rItems.put(JSONObject().apply {
+                put("id", "switch_detail_completed")
+                put("type", "Switch")
+                put("value", newDetailCompleted)
+                put("children", JSONArray())
+              })
+              put("children", rItems)
+            }
+            c.put(row)
+            put("children", c)
+          }
+          fItems.put(compCard)
+          fItems.put(JSONObject().apply { put("type", "SizedBox"); put("height", 18.0); put("children", JSONArray()) })
+
+          // Save CTA
+          val saveBtn = JSONObject().apply {
+            put("id", "btn_save_task_detail")
+            put("type", "Container")
+            put("sourceType", "Button")
+            put("color", 0xFF4F46E5.toLong())
+            put("isButton", true)
+            put("padding_top", 14.0)
+            put("padding_bottom", 14.0)
+            put("padding_left", 16.0)
+            put("padding_right", 16.0)
+            val c = JSONArray()
+            c.put(JSONObject().apply {
+              put("type", "Text")
+              put("text", "Save Changes")
+              put("fontSize", 16.0)
+              put("fontWeight", "bold")
+              put("color", 0xFFFFFFFF.toLong())
+              put("children", JSONArray())
+            })
+            put("children", c)
+          }
+          fItems.put(saveBtn)
+
+          put("children", fItems)
+        }
+        sChildren.put(formCol)
+        put("children", sChildren)
+      }
+      expC.put(scroll)
+      put("children", expC)
+    }
+    rootChildren.put(expanded)
+
+    root.put("children", rootChildren)
+    return root
+  }
+
+  private fun buildAnalyticsTree(): JSONObject {
+    val total = todoTasks.size
+    val completed = todoTasks.count { it.isCompleted }
+    val pending = total - completed
+    val progress = if (total > 0) completed.toDouble() / total.toDouble() else 0.0
+    val percentInt = (progress * 100).toInt()
+
+    val highCount = todoTasks.count { it.priority == "high" }
+    val medCount = todoTasks.count { it.priority == "medium" }
+    val lowCount = todoTasks.count { it.priority == "low" }
+
+    val root = JSONObject().apply {
+      put("id", "root_analytics")
+      put("type", "Column")
+      put("axis", "vertical")
+    }
+    val rootChildren = JSONArray()
+
+    val expanded = JSONObject().apply {
+      put("type", "Expanded")
+      put("flex", 1)
+      val expC = JSONArray()
+      val scroll = JSONObject().apply {
+        put("type", "SingleChildScrollView")
+        put("scrollDirection", "vertical")
+        put("padding_top", 14.0)
+        put("padding_bottom", 24.0)
+        put("padding_left", 16.0)
+        put("padding_right", 16.0)
+        val sChildren = JSONArray()
+        val aCol = JSONObject().apply {
+          put("type", "Column")
+          put("axis", "vertical")
+          val items = JSONArray()
+
+          // Header
+          items.put(JSONObject().apply {
+            put("type", "Text")
+            put("text", "Productivity Analytics")
+            put("fontSize", 24.0)
+            put("fontWeight", "bold")
+            put("color", 0xFF0F172A.toLong())
+            put("children", JSONArray())
+          })
+          items.put(JSONObject().apply { put("type", "SizedBox"); put("height", 14.0); put("children", JSONArray()) })
+
+          // Overall Completion Card
+          val compCard = JSONObject().apply {
+            put("type", "Card")
+            put("variant", "elevated")
+            put("borderRadius", 14.0)
+            put("color", 0xFFFFFFFF.toLong())
+            put("padding_top", 14.0)
+            put("padding_bottom", 14.0)
+            put("padding_left", 16.0)
+            put("padding_right", 16.0)
+            val c = JSONArray()
+            val col = JSONObject().apply {
+              put("type", "Column")
+              put("axis", "vertical")
+              val cItems = JSONArray()
+              cItems.put(JSONObject().apply {
+                put("type", "Text")
+                put("text", "Completion Rate: $percentInt% ($completed of $total Tasks)")
+                put("fontSize", 15.0)
+                put("fontWeight", "bold")
+                put("color", 0xFF0F172A.toLong())
+                put("children", JSONArray())
+              })
+              cItems.put(JSONObject().apply { put("type", "SizedBox"); put("height", 8.0); put("children", JSONArray()) })
+              cItems.put(JSONObject().apply {
+                put("type", "LinearProgressIndicator")
+                put("value", progress)
+                put("children", JSONArray())
+              })
+              put("children", cItems)
+            }
+            c.put(col)
+            put("children", c)
+          }
+          items.put(compCard)
+          items.put(JSONObject().apply { put("type", "SizedBox"); put("height", 14.0); put("children", JSONArray()) })
+
+          // Metrics Summary Card
+          val summaryCard = JSONObject().apply {
+            put("type", "Card")
+            put("variant", "elevated")
+            put("borderRadius", 14.0)
+            put("color", 0xFFFFFFFF.toLong())
+            put("padding_top", 14.0)
+            put("padding_bottom", 14.0)
+            put("padding_left", 16.0)
+            put("padding_right", 16.0)
+            val c = JSONArray()
+            val col = JSONObject().apply {
+              put("type", "Column")
+              put("axis", "vertical")
+              val cItems = JSONArray()
+              cItems.put(JSONObject().apply {
+                put("type", "Text")
+                put("text", "Total: $total  |  Done: $completed  |  Pending: $pending")
+                put("fontSize", 14.0)
+                put("fontWeight", "bold")
+                put("color", 0xFF4F46E5.toLong())
+                put("children", JSONArray())
+              })
+              cItems.put(JSONObject().apply { put("type", "SizedBox"); put("height", 6.0); put("children", JSONArray()) })
+              cItems.put(JSONObject().apply {
+                put("type", "Text")
+                put("text", "Priority Distribution: High ($highCount) | Medium ($medCount) | Low ($lowCount)")
+                put("fontSize", 13.0)
+                put("color", 0xFF64748B.toLong())
+                put("children", JSONArray())
+              })
+              put("children", cItems)
+            }
+            c.put(col)
+            put("children", c)
+          }
+          items.put(summaryCard)
+          items.put(JSONObject().apply { put("type", "SizedBox"); put("height", 14.0); put("children", JSONArray()) })
+
+          // Action Buttons
+          val addBtn = JSONObject().apply {
+            put("id", "btn_analytics_add_task")
+            put("type", "Container")
+            put("sourceType", "Button")
+            put("color", 0xFF4F46E5.toLong())
+            put("isButton", true)
+            put("padding_top", 12.0)
+            put("padding_bottom", 12.0)
+            put("padding_left", 16.0)
+            put("padding_right", 16.0)
+            val c = JSONArray()
+            c.put(JSONObject().apply {
+              put("type", "Text")
+              put("text", "+ Add New Task")
+              put("color", 0xFFFFFFFF.toLong())
+              put("fontWeight", "bold")
+              put("children", JSONArray())
+            })
+            put("children", c)
+          }
+          items.put(addBtn)
+
+          put("children", items)
+        }
+        sChildren.put(aCol)
+        put("children", sChildren)
+      }
+      expC.put(scroll)
+      put("children", expC)
+    }
+    rootChildren.put(expanded)
+    rootChildren.put(buildNavBar(1))
+
+    root.put("children", rootChildren)
+    return root
+  }
+
+  private fun buildSettingsTree(): JSONObject {
+    val root = JSONObject().apply {
+      put("id", "root_settings")
+      put("type", "Column")
+      put("axis", "vertical")
+    }
+    val rootChildren = JSONArray()
+
+    val expanded = JSONObject().apply {
+      put("type", "Expanded")
+      put("flex", 1)
+      val expC = JSONArray()
+      val scroll = JSONObject().apply {
+        put("type", "SingleChildScrollView")
+        put("scrollDirection", "vertical")
+        put("padding_top", 14.0)
+        put("padding_bottom", 24.0)
+        put("padding_left", 16.0)
+        put("padding_right", 16.0)
+        val sChildren = JSONArray()
+        val sCol = JSONObject().apply {
+          put("type", "Column")
+          put("axis", "vertical")
+          val items = JSONArray()
+
+          items.put(JSONObject().apply {
+            put("type", "Text")
+            put("text", "App Settings & Diagnostics")
+            put("fontSize", 24.0)
+            put("fontWeight", "bold")
+            put("color", 0xFF0F172A.toLong())
+            put("children", JSONArray())
+          })
+          items.put(JSONObject().apply { put("type", "SizedBox"); put("height", 14.0); put("children", JSONArray()) })
+
+          // Diffing Card
+          val diffCard = JSONObject().apply {
+            put("type", "Card")
+            put("variant", "elevated")
+            put("borderRadius", 14.0)
+            put("color", 0xFFFFFFFF.toLong())
+            put("padding_top", 14.0)
+            put("padding_bottom", 14.0)
+            put("padding_left", 16.0)
+            put("padding_right", 16.0)
+            val c = JSONArray()
+            val col = JSONObject().apply {
+              put("type", "Column")
+              put("axis", "vertical")
+              val cItems = JSONArray()
+              cItems.put(JSONObject().apply {
+                put("type", "Text")
+                put("text", "Widget Tree Diffing Engine (RFC-6902)")
+                put("fontSize", 15.0)
+                put("fontWeight", "bold")
+                put("color", 0xFF0F172A.toLong())
+                put("children", JSONArray())
+              })
+              cItems.put(JSONObject().apply { put("type", "SizedBox"); put("height", 6.0); put("children", JSONArray()) })
+              val row = JSONObject().apply {
+                put("type", "Row")
+                put("axis", "horizontal")
+                val rItems = JSONArray()
+                rItems.put(JSONObject().apply {
+                  put("type", "Expanded")
+                  put("flex", 1)
+                  val tc = JSONArray()
+                  tc.put(JSONObject().apply {
+                    put("type", "Text")
+                    put("text", "Incremental Diffing Active")
+                    put("fontSize", 14.0)
+                    put("color", 0xFF64748B.toLong())
+                    put("children", JSONArray())
+                  })
+                  put("children", tc)
+                })
+                rItems.put(JSONObject().apply {
+                  put("id", "switch_diffing_toggle")
+                  put("type", "Switch")
+                  put("value", diffingEnabled)
+                  put("children", JSONArray())
+                })
+                put("children", rItems)
+              }
+              cItems.put(row)
+              put("children", cItems)
+            }
+            c.put(col)
+            put("children", c)
+          }
+          items.put(diffCard)
+          items.put(JSONObject().apply { put("type", "SizedBox"); put("height", 14.0); put("children", JSONArray()) })
+
+          // Diagnostics Card
+          val diagCard = JSONObject().apply {
+            put("type", "Card")
+            put("variant", "elevated")
+            put("borderRadius", 14.0)
+            put("color", 0xFFFFFFFF.toLong())
+            put("padding_top", 14.0)
+            put("padding_bottom", 14.0)
+            put("padding_left", 16.0)
+            put("padding_right", 16.0)
+            val c = JSONArray()
+            val col = JSONObject().apply {
+              put("type", "Column")
+              put("axis", "vertical")
+              val cItems = JSONArray()
+              cItems.put(JSONObject().apply {
+                put("type", "Text")
+                put("text", "Time-Travel & Snapshot Manifest")
+                put("fontSize", 15.0)
+                put("fontWeight", "bold")
+                put("color", 0xFF0F172A.toLong())
+                put("children", JSONArray())
+              })
+              cItems.put(JSONObject().apply { put("type", "SizedBox"); put("height", 10.0); put("children", JSONArray()) })
+              val btnRow = JSONObject().apply {
+                put("type", "Row")
+                put("axis", "horizontal")
+                val bItems = JSONArray()
+                bItems.put(JSONObject().apply {
+                  put("id", "btn_export_snapshot")
+                  put("type", "Container")
+                  put("sourceType", "Button")
+                  put("color", 0xFF4F46E5.toLong())
+                  put("isButton", true)
+                  put("padding_top", 8.0)
+                  put("padding_bottom", 8.0)
+                  put("padding_left", 12.0)
+                  put("padding_right", 12.0)
+                  val bc = JSONArray()
+                  bc.put(JSONObject().apply {
+                    put("type", "Text")
+                    put("text", "Export Snapshot")
+                    put("color", 0xFFFFFFFF.toLong())
+                    put("children", JSONArray())
+                  })
+                  put("children", bc)
+                })
+                bItems.put(JSONObject().apply { put("type", "SizedBox"); put("width", 8.0); put("children", JSONArray()) })
+                bItems.put(JSONObject().apply {
+                  put("id", "btn_reset_sample_data")
+                  put("type", "Container")
+                  put("sourceType", "Button")
+                  put("color", 0xFF64748B.toLong())
+                  put("isButton", true)
+                  put("padding_top", 8.0)
+                  put("padding_bottom", 8.0)
+                  put("padding_left", 12.0)
+                  put("padding_right", 12.0)
+                  val bc = JSONArray()
+                  bc.put(JSONObject().apply {
+                    put("type", "Text")
+                    put("text", "Reset Tasks")
+                    put("color", 0xFFFFFFFF.toLong())
+                    put("children", JSONArray())
+                  })
+                  put("children", bc)
+                })
+                put("children", bItems)
+              }
+              cItems.put(btnRow)
+              if (exportedSnapshotPreview != null) {
+                cItems.put(JSONObject().apply { put("type", "SizedBox"); put("height", 8.0); put("children", JSONArray()) })
+                cItems.put(JSONObject().apply {
+                  put("type", "Text")
+                  put("text", exportedSnapshotPreview ?: "")
+                  put("fontSize", 11.0)
+                  put("color", 0xFF0F172A.toLong())
+                  put("children", JSONArray())
+                })
+              }
+              put("children", cItems)
+            }
+            c.put(col)
+            put("children", c)
+          }
+          items.put(diagCard)
+
+          put("children", items)
+        }
+        sChildren.put(sCol)
+        put("children", sChildren)
+      }
+      expC.put(scroll)
+      put("children", expC)
+    }
+    rootChildren.put(expanded)
+    rootChildren.put(buildNavBar(2))
+
+    root.put("children", rootChildren)
+    return root
+  }
+
+
+  private fun handleLocalAction(id: String, value: Any? = null, index: Int? = null) {
     runOnUiThread {
       when {
-        id == "btn_submit_task" -> {
+        id == "main_nav" -> {
+          when (index) {
+            0 -> currentRoute = "/tasks"
+            1 -> currentRoute = "/analytics"
+            2 -> currentRoute = "/settings"
+          }
+        }
+        id == "btn_open_new_task" || id == "btn_analytics_add_task" -> {
+          currentRoute = "/new-task"
+          newTaskTitle = ""
+          newDetailDesc = ""
+          selectedPriority = "medium"
+          selectedCategory = "Work"
+        }
+        id == "btn_cancel_new_task" || id == "btn_back_task_detail" || id == "btn_not_found_back" -> {
+          currentRoute = "/tasks"
+        }
+        id.startsWith("btn_view_task_") -> {
+          val taskId = id.removePrefix("btn_view_task_")
+          selectedTaskId = taskId
+          val task = todoTasks.find { it.id == taskId }
+          if (task != null) {
+            newDetailTitle = task.title
+            newDetailDesc = ""
+            newDetailPriority = task.priority
+            newDetailCategory = task.category
+            newDetailCompleted = task.isCompleted
+          }
+          currentRoute = "/tasks/$taskId"
+        }
+        id == "btn_create_task_submit" || id == "btn_create_task_bottom" || id == "btn_submit_task" -> {
           val title = newTaskTitle.trim()
           if (title.isNotEmpty()) {
             val newTask = TodoItemData(
@@ -907,9 +2033,77 @@ class MainActivity : Activity() {
             newTaskTitle = ""
             saveLocalTasks()
           }
+          currentRoute = "/tasks"
         }
+        id == "btn_save_task_detail" -> {
+          val taskId = selectedTaskId
+          if (taskId != null) {
+            val task = todoTasks.find { it.id == taskId }
+            if (task != null) {
+              val title = newDetailTitle.trim()
+              if (title.isNotEmpty()) {
+                val idx = todoTasks.indexOf(task)
+                todoTasks[idx] = TodoItemData(
+                  id = task.id,
+                  title = title,
+                  priority = newDetailPriority,
+                  category = newDetailCategory,
+                  isCompleted = newDetailCompleted,
+                  createdAt = task.createdAt
+                )
+                saveLocalTasks()
+              }
+            }
+          }
+          currentRoute = "/tasks"
+        }
+        id == "btn_delete_task_detail" -> {
+          val taskId = selectedTaskId
+          if (taskId != null) {
+            todoTasks.removeAll { it.id == taskId }
+            saveLocalTasks()
+          }
+          currentRoute = "/tasks"
+        }
+        id == "btn_export_snapshot" -> {
+          val completedCount = todoTasks.count { it.isCompleted }
+          exportedSnapshotPreview = "ActiveRoute: $currentRoute | Tasks: ${todoTasks.size} | Done: $completedCount"
+        }
+        id == "btn_reset_sample_data" || id == "btn_analytics_reset_tasks" -> {
+          todoTasks = mutableListOf(
+            TodoItemData("task_1", "Explore Neon Framework architecture", true, "high", "Work"),
+            TodoItemData("task_2", "Implement Navigation & Routing engine", true, "high", "Work"),
+            TodoItemData("task_3", "Test Android Predictive Back gestures", false, "medium", "Study"),
+            TodoItemData("task_4", "Benchmark widget tree diffing performance", false, "low", "Personal"),
+            TodoItemData("task_5", "Weekly grocery shopping", false, "medium", "Shopping")
+          )
+          saveLocalTasks()
+          exportedSnapshotPreview = "Sample tasks reset successfully."
+        }
+        id == "switch_diffing_toggle" -> {
+          diffingEnabled = (value as? Boolean) ?: !diffingEnabled
+        }
+        id == "switch_detail_completed" -> {
+          newDetailCompleted = (value as? Boolean) ?: !newDetailCompleted
+        }
+        id == "tf_detail_title" -> {
+          newDetailTitle = value?.toString() ?: ""
+          return@runOnUiThread
+        }
+        id == "tf_detail_desc" -> {
+          newDetailDesc = value?.toString() ?: ""
+          return@runOnUiThread
+        }
+        id == "detail_prio_low" -> newDetailPriority = "low"
+        id == "detail_prio_med" -> newDetailPriority = "medium"
+        id == "detail_prio_high" -> newDetailPriority = "high"
+        id.startsWith("detail_cat_") -> newDetailCategory = id.removePrefix("detail_cat_")
         id == "tf_new_task" -> {
           newTaskTitle = value?.toString() ?: ""
+          return@runOnUiThread
+        }
+        id == "tf_new_desc" -> {
+          newDetailDesc = value?.toString() ?: ""
           return@runOnUiThread
         }
         id.startsWith("cb_task_") -> {
@@ -945,13 +2139,7 @@ class MainActivity : Activity() {
         id.startsWith("filter_cat_") -> activeCategoryFilter = id.removePrefix("filter_cat_")
       }
 
-      val newTree = buildTodoTree()
-      val rootView = renderWidget(newTree)
-      rootView.layoutParams = ViewGroup.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.MATCH_PARENT
-      )
-      setContentView(rootView)
+      renderLocalTree()
     }
   }
 
@@ -996,8 +2184,20 @@ class MainActivity : Activity() {
   }
 
   private fun sendAction(id: String, index: Int? = null, value: Any? = null) {
+    if (id == "main_nav" || id == "btn_open_new_task" || id == "btn_cancel_new_task" ||
+        id == "btn_back_task_detail" || id.startsWith("btn_view_task_") || id == "btn_create_task_bottom" ||
+        id == "btn_create_task_submit" || id == "btn_save_task_detail" || id == "btn_delete_task_detail" ||
+        id == "btn_analytics_add_task" || id == "btn_analytics_reset_tasks" || id == "btn_reset_sample_data" ||
+        id == "btn_export_snapshot" || id == "switch_diffing_toggle" || id == "switch_detail_completed" ||
+        id.startsWith("detail_") || id == "btn_not_found_back" || id.startsWith("chip_") ||
+        id.startsWith("filter_") || id.startsWith("cb_task_") || id.startsWith("btn_del_") ||
+        id == "btn_clear_completed_tasks" || id == "btn_toggle_all_tasks" || id.startsWith("tf_")) {
+      handleLocalAction(id, value, index)
+      return
+    }
+
     if (!USE_REMOTE_SERVER) {
-      handleLocalAction(id, value)
+      handleLocalAction(id, value, index)
       return
     }
 

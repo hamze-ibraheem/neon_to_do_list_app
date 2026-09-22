@@ -27,6 +27,16 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
     private var activeCategoryFilter: String = "All"
     private let categories = ["Work", "Personal", "Study", "Shopping", "Health"]
     private let useRemoteServer = true
+    private var currentRoute: String = "/tasks"
+    private var selectedTaskId: String? = nil
+    private var newDetailTitle: String = ""
+    private var newDetailDesc: String = ""
+    private var newDetailPriority: String = "medium"
+    private var newDetailCategory: String = "Work"
+    private var newDetailCompleted: Bool = false
+    private var diffingEnabled: Bool = true
+    private var exportedSnapshotPreview: String? = nil
+    private var searchQuery: String = ""
 
     private let defaultServerUrl = "https://custom-frameworks-neon-framework.iix8qf.easypanel.host"
 
@@ -72,7 +82,7 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
     }
 
     private func renderLocalTree() {
-        let tree = buildTodoTree()
+        let tree = buildCurrentTree()
         view.subviews.forEach { $0.removeFromSuperview() }
         let rootView = renderWidget(node: tree)
         rootView.translatesAutoresizingMaskIntoConstraints = false
@@ -87,9 +97,28 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
 
     private func handleLocalAction(id: String, value: Any? = nil) {
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self else { return}
             
-            if id == "btn_submit_task" {
+            if id == "btn_open_new_task" || id == "btn_analytics_add_task" {
+                self.currentRoute = "/new-task"
+                self.newTaskTitle = ""
+                self.newDetailDesc = ""
+                self.selectedPriority = "medium"
+                self.selectedCategory = "Work"
+            } else if id == "btn_cancel_new_task" || id == "btn_back_task_detail" || id == "btn_not_found_back" {
+                self.currentRoute = "/tasks"
+            } else if id.hasPrefix("btn_view_task_") {
+                let taskId = String(id.dropFirst("btn_view_task_".count))
+                self.selectedTaskId = taskId
+                if let task = self.todoTasks.first(where: { $0.id == taskId }) {
+                    self.newDetailTitle = task.title
+                    self.newDetailDesc = ""
+                    self.newDetailPriority = task.priority
+                    self.newDetailCategory = task.category
+                    self.newDetailCompleted = task.isCompleted
+                }
+                self.currentRoute = "/tasks/\(taskId)"
+            } else if id == "btn_create_task_submit" || id == "btn_create_task_bottom" || id == "btn_submit_task" {
                 let title = self.newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !title.isEmpty {
                     let newTask = TodoItemData(
@@ -104,8 +133,68 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                     self.newTaskTitle = ""
                     self.saveLocalTasks()
                 }
+                self.currentRoute = "/tasks"
+            } else if id == "btn_save_task_detail" {
+                if let taskId = self.selectedTaskId, let idx = self.todoTasks.firstIndex(where: { $0.id == taskId }) {
+                    let title = self.newDetailTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !title.isEmpty {
+                        self.todoTasks[idx].title = title
+                    }
+                    self.todoTasks[idx].priority = self.newDetailPriority
+                    self.todoTasks[idx].category = self.newDetailCategory
+                    self.todoTasks[idx].isCompleted = self.newDetailCompleted
+                    self.saveLocalTasks()
+                }
+                self.currentRoute = "/tasks"
+            } else if id == "btn_delete_task_detail" {
+                if let taskId = self.selectedTaskId {
+                    self.todoTasks.removeAll { $0.id == taskId }
+                    self.saveLocalTasks()
+                }
+                self.currentRoute = "/tasks"
+            } else if id == "btn_export_snapshot" {
+                self.exportedSnapshotPreview = """
+                {
+                  "timestamp": "\(Date())",
+                  "activeRoute": "\(self.currentRoute)",
+                  "totalTasks": \(self.todoTasks.count),
+                  "completed": \(self.todoTasks.filter { $0.isCompleted }.count),
+                  "diffingMode": "RFC-6902 incremental"
+                }
+                """
+            } else if id == "btn_reset_sample_data" || id == "btn_analytics_reset_tasks" {
+                self.todoTasks = [
+                    TodoItemData(id: "task_1", title: "Explore Neon Framework architecture", isCompleted: true, priority: "high", category: "Work"),
+                    TodoItemData(id: "task_2", title: "Implement Navigation & Routing engine", isCompleted: true, priority: "high", category: "Work"),
+                    TodoItemData(id: "task_3", title: "Test Android Predictive Back gestures", isCompleted: false, priority: "medium", category: "Study"),
+                    TodoItemData(id: "task_4", title: "Benchmark widget tree diffing performance", isCompleted: false, priority: "low", category: "Personal"),
+                    TodoItemData(id: "task_5", title: "Weekly grocery shopping", isCompleted: false, priority: "medium", category: "Shopping")
+                ]
+                self.saveLocalTasks()
+                self.exportedSnapshotPreview = "Sample tasks reset successfully."
+            } else if id == "switch_diffing_toggle" {
+                self.diffingEnabled = (value as? Bool) ?? !self.diffingEnabled
+            } else if id == "switch_detail_completed" {
+                self.newDetailCompleted = (value as? Bool) ?? !self.newDetailCompleted
+            } else if id == "tf_detail_title" {
+                self.newDetailTitle = (value as? String) ?? ""
+                return
+            } else if id == "tf_detail_desc" {
+                self.newDetailDesc = (value as? String) ?? ""
+                return
+            } else if id == "detail_prio_low" {
+                self.newDetailPriority = "low"
+            } else if id == "detail_prio_med" {
+                self.newDetailPriority = "medium"
+            } else if id == "detail_prio_high" {
+                self.newDetailPriority = "high"
+            } else if id.hasPrefix("detail_cat_") {
+                self.newDetailCategory = String(id.dropFirst("detail_cat_".count))
             } else if id == "tf_new_task" {
                 self.newTaskTitle = (value as? String) ?? ""
+                return
+            } else if id == "tf_new_desc" {
+                self.newDetailDesc = (value as? String) ?? ""
                 return
             } else if id.hasPrefix("cb_task_") {
                 let taskId = String(id.dropFirst("cb_task_".count))
@@ -207,6 +296,21 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                                     "color": 0xFFFFFFFF
                                 ]
                             ]
+                        ]
+                    ]
+                ],
+                [
+                    "id": "btn_open_new_task",
+                    "type": "Button",
+                    "color": 0xFFFFFFFF,
+                    "isButton": true,
+                    "children": [
+                        [
+                            "type": "Text",
+                            "text": "+ New",
+                            "fontSize": 13.0,
+                            "fontWeight": "bold",
+                            "color": 0xFF4F46E5
                         ]
                     ]
                 ]
@@ -681,6 +785,23 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                     ]
                 ])
 
+                let editBtn: [String: Any] = [
+                    "id": "btn_view_task_\(t.id)",
+                    "type": "Button",
+                    "color": 0xFF4F46E5,
+                    "isButton": true,
+                    "children": [
+                        [
+                            "type": "Text",
+                            "text": "Edit →",
+                            "fontSize": 12.0,
+                            "fontWeight": "bold",
+                            "color": 0xFFFFFFFF
+                        ]
+                    ]
+                ]
+                taskRowItems.append(editBtn)
+
                 let delBtn: [String: Any] = [
                     "id": "btn_del_\(t.id)",
                     "type": "Button",
@@ -750,11 +871,1100 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
             "type": "Expanded",
             "children": [mainScrollView]
         ])
+        rootItems.append(buildNavBar(selectedIndex: 0))
 
         return [
             "id": "root",
             "type": "Column",
             "sourceType": "TodoApp",
+            "children": rootItems
+        ]
+    }
+
+    private func buildNavBar(selectedIndex: Int) -> [String: Any] {
+        return [
+            "id": "main_nav",
+            "type": "NavigationBar",
+            "selectedIndex": selectedIndex,
+            "destinations": [
+                ["label": "Tasks", "icon": ["text": "checklist"]],
+                ["label": "Analytics", "icon": ["text": "chart.bar.fill"]],
+                ["label": "Settings", "icon": ["text": "gearshape.fill"]]
+            ],
+            "children": []
+        ]
+    }
+
+    private func buildCurrentTree() -> [String: Any] {
+        if currentRoute == "/new-task" {
+            return buildNewTaskTree()
+        } else if currentRoute.starts(with: "/tasks/") {
+            let id = selectedTaskId ?? String(currentRoute.dropFirst("/tasks/".count))
+            return buildTaskDetailTree(taskId: id)
+        } else if currentRoute == "/analytics" {
+            return buildAnalyticsTree()
+        } else if currentRoute == "/settings" {
+            return buildSettingsTree()
+        } else {
+            return buildTodoTree()
+        }
+    }
+
+    private func buildNewTaskTree() -> [String: Any] {
+        var rootItems: [[String: Any]] = []
+
+        let topBar: [String: Any] = [
+            "type": "Padding",
+            "padding_left": 16.0,
+            "padding_right": 16.0,
+            "padding_top": 12.0,
+            "padding_bottom": 12.0,
+            "children": [
+                [
+                    "type": "Row",
+                    "children": [
+                        [
+                            "id": "btn_cancel_new_task",
+                            "type": "Button",
+                            "color": 0xFF64748B,
+                            "isButton": true,
+                            "children": [
+                                ["type": "Text", "text": "Cancel", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFFFFFFFF]
+                            ]
+                        ],
+                        ["type": "Spacer"],
+                        ["type": "Text", "text": "Create New Task", "fontSize": 18.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                        ["type": "Spacer"],
+                        [
+                            "id": "btn_create_task_submit",
+                            "type": "Button",
+                            "color": 0xFF4F46E5,
+                            "isButton": true,
+                            "children": [
+                                ["type": "Text", "text": "Create", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFFFFFFFF]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        rootItems.append(topBar)
+
+        var formItems: [[String: Any]] = []
+
+        let fieldsCard: [String: Any] = [
+            "type": "Card",
+            "color": 0xFFFFFFFF,
+            "borderRadius": 14.0,
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0,
+                    "padding_right": 16.0,
+                    "padding_top": 16.0,
+                    "padding_bottom": 16.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 10.0,
+                            "children": [
+                                ["type": "Text", "text": "Task Title", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                                [
+                                    "id": "tf_new_task",
+                                    "type": "TextField",
+                                    "hintText": "What needs to be done?",
+                                    "text": newTaskTitle,
+                                    "children": []
+                                ],
+                                ["type": "SizedBox", "height": 8.0, "children": []],
+                                ["type": "Text", "text": "Description & Notes", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                                [
+                                    "id": "tf_new_desc",
+                                    "type": "TextField",
+                                    "hintText": "Add details or context...",
+                                    "text": newDetailDesc,
+                                    "children": []
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        formItems.append(fieldsCard)
+        formItems.append(["type": "SizedBox", "height": 14.0, "children": []])
+
+        let prioChips: [[String: Any]] = [
+            [
+                "id": "chip_prio_low",
+                "type": "FilterChip",
+                "label": "Low",
+                "selected": selectedPriority == "low",
+                "selectedColor": 0xFF10B981,
+                "children": []
+            ],
+            [
+                "id": "chip_prio_med",
+                "type": "FilterChip",
+                "label": "Medium",
+                "selected": selectedPriority == "medium",
+                "selectedColor": 0xFFF59E0B,
+                "children": []
+            ],
+            [
+                "id": "chip_prio_high",
+                "type": "FilterChip",
+                "label": "High",
+                "selected": selectedPriority == "high",
+                "selectedColor": 0xFFEF4444,
+                "children": []
+            ]
+        ]
+        let prioCard: [String: Any] = [
+            "type": "Card",
+            "color": 0xFFFFFFFF,
+            "borderRadius": 14.0,
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0,
+                    "padding_right": 16.0,
+                    "padding_top": 16.0,
+                    "padding_bottom": 16.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 10.0,
+                            "children": [
+                                ["type": "Text", "text": "Priority Level", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                                [
+                                    "type": "Row",
+                                    "spacing": 8.0,
+                                    "children": prioChips
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        formItems.append(prioCard)
+        formItems.append(["type": "SizedBox", "height": 14.0, "children": []])
+
+        var catChips: [[String: Any]] = []
+        for cat in categories {
+            catChips.append([
+                "id": "chip_cat_\(cat)",
+                "type": "FilterChip",
+                "label": cat,
+                "selected": selectedCategory == cat,
+                "selectedColor": 0xFF4F46E5,
+                "children": []
+            ])
+        }
+        let catCard: [String: Any] = [
+            "type": "Card",
+            "color": 0xFFFFFFFF,
+            "borderRadius": 14.0,
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0,
+                    "padding_right": 16.0,
+                    "padding_top": 16.0,
+                    "padding_bottom": 16.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 10.0,
+                            "children": [
+                                ["type": "Text", "text": "Category", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                                [
+                                    "type": "SingleChildScrollView",
+                                    "scrollDirection": "horizontal",
+                                    "children": [
+                                        [
+                                            "type": "Row",
+                                            "spacing": 8.0,
+                                            "children": catChips
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        formItems.append(catCard)
+        formItems.append(["type": "SizedBox", "height": 20.0, "children": []])
+
+        let submitBtn: [String: Any] = [
+            "id": "btn_create_task_bottom",
+            "type": "Button",
+            "color": 0xFF4F46E5,
+            "isButton": true,
+            "children": [
+                [
+                    "type": "Text",
+                    "text": "+ Create Task",
+                    "fontSize": 16.0,
+                    "fontWeight": "bold",
+                    "color": 0xFFFFFFFF
+                ]
+            ]
+        ]
+        formItems.append(submitBtn)
+
+        let scrollView: [String: Any] = [
+            "type": "SingleChildScrollView",
+            "scrollDirection": "vertical",
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0,
+                    "padding_right": 16.0,
+                    "padding_top": 8.0,
+                    "padding_bottom": 32.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 0.0,
+                            "children": formItems
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        rootItems.append([
+            "type": "Expanded",
+            "children": [scrollView]
+        ])
+
+        return [
+            "id": "root_new_task",
+            "type": "Column",
+            "children": rootItems
+        ]
+    }
+
+    private func buildTaskDetailTree(taskId: String) -> [String: Any] {
+        guard let task = todoTasks.first(where: { $0.id == taskId }) else {
+            return [
+                "id": "root_task_not_found",
+                "type": "Column",
+                "children": [
+                    [
+                        "type": "Padding",
+                        "padding_top": 40.0,
+                        "padding_left": 20.0,
+                        "padding_right": 20.0,
+                        "children": [
+                            [
+                                "type": "Column",
+                                "spacing": 16.0,
+                                "children": [
+                                    ["type": "Text", "text": "Task Not Found", "fontSize": 20.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                                    [
+                                        "id": "btn_not_found_back",
+                                        "type": "Button",
+                                        "color": 0xFF4F46E5,
+                                        "isButton": true,
+                                        "children": [
+                                            ["type": "Text", "text": "Return to Tasks", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFFFFFFFF]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        }
+
+        var rootItems: [[String: Any]] = []
+
+        let topBar: [String: Any] = [
+            "type": "Padding",
+            "padding_left": 16.0,
+            "padding_right": 16.0,
+            "padding_top": 12.0,
+            "padding_bottom": 12.0,
+            "children": [
+                [
+                    "type": "Row",
+                    "children": [
+                        [
+                            "id": "btn_back_task_detail",
+                            "type": "Button",
+                            "color": 0xFF64748B,
+                            "isButton": true,
+                            "children": [
+                                ["type": "Text", "text": "← Back", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFFFFFFFF]
+                            ]
+                        ],
+                        ["type": "Spacer"],
+                        ["type": "Text", "text": "Task Details", "fontSize": 18.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                        ["type": "Spacer"],
+                        [
+                            "id": "btn_delete_task_detail",
+                            "type": "Button",
+                            "color": 0xFFEF4444,
+                            "isButton": true,
+                            "children": [
+                                ["type": "Text", "text": "Delete", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFFFFFFFF]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        rootItems.append(topBar)
+
+        var formItems: [[String: Any]] = []
+
+        let heroCard: [String: Any] = [
+            "type": "Card",
+            "color": 0xFFFFFFFF,
+            "borderRadius": 14.0,
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0,
+                    "padding_right": 16.0,
+                    "padding_top": 14.0,
+                    "padding_bottom": 14.0,
+                    "children": [
+                        [
+                            "type": "Row",
+                            "children": [
+                                ["type": "Text", "text": "Task ID: \(task.id)", "fontSize": 13.0, "fontWeight": "bold", "color": 0xFF64748B],
+                                ["type": "Spacer"],
+                                [
+                                    "type": "Badge",
+                                    "label": task.isCompleted ? "Completed" : "Pending",
+                                    "backgroundColor": task.isCompleted ? 0xFF10B981 : 0xFFF59E0B,
+                                    "labelColor": 0xFFFFFFFF,
+                                    "children": []
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        formItems.append(heroCard)
+        formItems.append(["type": "SizedBox", "height": 14.0, "children": []])
+
+        let titleCard: [String: Any] = [
+            "type": "Card",
+            "color": 0xFFFFFFFF,
+            "borderRadius": 14.0,
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0,
+                    "padding_right": 16.0,
+                    "padding_top": 14.0,
+                    "padding_bottom": 14.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 8.0,
+                            "children": [
+                                ["type": "Text", "text": "Task Title", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                                [
+                                    "id": "tf_detail_title",
+                                    "type": "TextField",
+                                    "text": newDetailTitle.isEmpty ? task.title : newDetailTitle,
+                                    "children": []
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        formItems.append(titleCard)
+        formItems.append(["type": "SizedBox", "height": 14.0, "children": []])
+
+        let prioChips: [[String: Any]] = [
+            [
+                "id": "detail_prio_low",
+                "type": "FilterChip",
+                "label": "Low",
+                "selected": newDetailPriority == "low",
+                "selectedColor": 0xFF10B981,
+                "children": []
+            ],
+            [
+                "id": "detail_prio_med",
+                "type": "FilterChip",
+                "label": "Medium",
+                "selected": newDetailPriority == "medium",
+                "selectedColor": 0xFFF59E0B,
+                "children": []
+            ],
+            [
+                "id": "detail_prio_high",
+                "type": "FilterChip",
+                "label": "High",
+                "selected": newDetailPriority == "high",
+                "selectedColor": 0xFFEF4444,
+                "children": []
+            ]
+        ]
+        let prioCard: [String: Any] = [
+            "type": "Card",
+            "color": 0xFFFFFFFF,
+            "borderRadius": 14.0,
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0,
+                    "padding_right": 16.0,
+                    "padding_top": 14.0,
+                    "padding_bottom": 14.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 8.0,
+                            "children": [
+                                ["type": "Text", "text": "Priority Level", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                                [
+                                    "type": "Row",
+                                    "spacing": 8.0,
+                                    "children": prioChips
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        formItems.append(prioCard)
+        formItems.append(["type": "SizedBox", "height": 14.0, "children": []])
+
+        var catChips: [[String: Any]] = []
+        for cat in categories {
+            catChips.append([
+                "id": "detail_cat_\(cat)",
+                "type": "FilterChip",
+                "label": cat,
+                "selected": newDetailCategory == cat,
+                "selectedColor": 0xFF4F46E5,
+                "children": []
+            ])
+        }
+        let catCard: [String: Any] = [
+            "type": "Card",
+            "color": 0xFFFFFFFF,
+            "borderRadius": 14.0,
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0,
+                    "padding_right": 16.0,
+                    "padding_top": 14.0,
+                    "padding_bottom": 14.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 8.0,
+                            "children": [
+                                ["type": "Text", "text": "Category", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                                [
+                                    "type": "SingleChildScrollView",
+                                    "scrollDirection": "horizontal",
+                                    "children": [
+                                        [
+                                            "type": "Row",
+                                            "spacing": 8.0,
+                                            "children": catChips
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        formItems.append(catCard)
+        formItems.append(["type": "SizedBox", "height": 14.0, "children": []])
+
+        let toggleCard: [String: Any] = [
+            "type": "Card",
+            "color": 0xFFFFFFFF,
+            "borderRadius": 14.0,
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0,
+                    "padding_right": 16.0,
+                    "padding_top": 14.0,
+                    "padding_bottom": 14.0,
+                    "children": [
+                        [
+                            "type": "Row",
+                            "children": [
+                                ["type": "Text", "text": "Mark as Completed", "fontSize": 15.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                                ["type": "Spacer"],
+                                [
+                                    "id": "switch_detail_completed",
+                                    "type": "Switch",
+                                    "value": newDetailCompleted,
+                                    "children": []
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        formItems.append(toggleCard)
+        formItems.append(["type": "SizedBox", "height": 20.0, "children": []])
+
+        let saveBtn: [String: Any] = [
+            "id": "btn_save_task_detail",
+            "type": "Button",
+            "color": 0xFF4F46E5,
+            "isButton": true,
+            "children": [
+                [
+                    "type": "Text",
+                    "text": "Save Changes",
+                    "fontSize": 16.0,
+                    "fontWeight": "bold",
+                    "color": 0xFFFFFFFF
+                ]
+            ]
+        ]
+        formItems.append(saveBtn)
+
+        let scrollView: [String: Any] = [
+            "type": "SingleChildScrollView",
+            "scrollDirection": "vertical",
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0,
+                    "padding_right": 16.0,
+                    "padding_top": 8.0,
+                    "padding_bottom": 32.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 0.0,
+                            "children": formItems
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        rootItems.append([
+            "type": "Expanded",
+            "children": [scrollView]
+        ])
+
+        return [
+            "id": "root_task_detail",
+            "type": "Column",
+            "children": rootItems
+        ]
+    }
+
+    private func buildAnalyticsTree() -> [String: Any] {
+        let total = todoTasks.count
+        let completed = todoTasks.filter { $0.isCompleted }.count
+        let pending = total - completed
+        let progress = total > 0 ? Double(completed) / Double(total) : 0.0
+        let percentInt = Int(progress * 100)
+
+        let highCount = todoTasks.filter { $0.priority == "high" }.count
+        let medCount = todoTasks.filter { $0.priority == "medium" }.count
+        let lowCount = todoTasks.filter { $0.priority == "low" }.count
+
+        var scrollItems: [[String: Any]] = []
+
+        let headerRow: [String: Any] = [
+            "type": "Row",
+            "children": [
+                ["type": "Text", "text": "Productivity Analytics", "fontSize": 24.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                ["type": "Spacer"],
+                [
+                    "type": "Badge",
+                    "label": "\(percentInt)% Done",
+                    "backgroundColor": 0xFF4F46E5,
+                    "labelColor": 0xFFFFFFFF,
+                    "children": []
+                ]
+            ]
+        ]
+        scrollItems.append(headerRow)
+        scrollItems.append(["type": "SizedBox", "height": 16.0, "children": []])
+
+        let progressCard: [String: Any] = [
+            "type": "Card",
+            "color": 0xFFFFFFFF,
+            "borderRadius": 14.0,
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0,
+                    "padding_right": 16.0,
+                    "padding_top": 16.0,
+                    "padding_bottom": 16.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 10.0,
+                            "children": [
+                                [
+                                    "type": "Row",
+                                    "children": [
+                                        ["type": "Text", "text": "Overall Completion Rate", "fontSize": 16.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                                        ["type": "Spacer"],
+                                        ["type": "Text", "text": "\(completed) of \(total) Tasks", "fontSize": 13.0, "color": 0xFF64748B]
+                                    ]
+                                ],
+                                [
+                                    "type": "LinearProgressIndicator",
+                                    "value": progress,
+                                    "minHeight": 10.0,
+                                    "borderRadius": 5.0,
+                                    "color": 0xFF4F46E5,
+                                    "backgroundColor": 0xFFE2E8F0,
+                                    "children": []
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        scrollItems.append(progressCard)
+        scrollItems.append(["type": "SizedBox", "height": 16.0, "children": []])
+
+        let metricsRow1: [String: Any] = [
+            "type": "Row",
+            "spacing": 10.0,
+            "children": [
+                [
+                    "type": "Expanded",
+                    "children": [
+                        [
+                            "type": "Card",
+                            "color": 0xFFFFFFFF,
+                            "borderRadius": 12.0,
+                            "children": [
+                                [
+                                    "type": "Padding",
+                                    "padding_left": 14.0, "padding_right": 14.0, "padding_top": 14.0, "padding_bottom": 14.0,
+                                    "children": [
+                                        [
+                                            "type": "Column",
+                                            "spacing": 4.0,
+                                            "children": [
+                                                ["type": "Text", "text": "Total Tasks", "fontSize": 12.0, "color": 0xFF64748B],
+                                                ["type": "Text", "text": "\(total)", "fontSize": 24.0, "fontWeight": "bold", "color": 0xFF0F172A]
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ],
+                [
+                    "type": "Expanded",
+                    "children": [
+                        [
+                            "type": "Card",
+                            "color": 0xFFFFFFFF,
+                            "borderRadius": 12.0,
+                            "children": [
+                                [
+                                    "type": "Padding",
+                                    "padding_left": 14.0, "padding_right": 14.0, "padding_top": 14.0, "padding_bottom": 14.0,
+                                    "children": [
+                                        [
+                                            "type": "Column",
+                                            "spacing": 4.0,
+                                            "children": [
+                                                ["type": "Text", "text": "Completed", "fontSize": 12.0, "color": 0xFF64748B],
+                                                ["type": "Text", "text": "\(completed)", "fontSize": 24.0, "fontWeight": "bold", "color": 0xFF10B981]
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        scrollItems.append(metricsRow1)
+        scrollItems.append(["type": "SizedBox", "height": 10.0, "children": []])
+
+        let metricsRow2: [String: Any] = [
+            "type": "Row",
+            "spacing": 10.0,
+            "children": [
+                [
+                    "type": "Expanded",
+                    "children": [
+                        [
+                            "type": "Card",
+                            "color": 0xFFFFFFFF,
+                            "borderRadius": 12.0,
+                            "children": [
+                                [
+                                    "type": "Padding",
+                                    "padding_left": 14.0, "padding_right": 14.0, "padding_top": 14.0, "padding_bottom": 14.0,
+                                    "children": [
+                                        [
+                                            "type": "Column",
+                                            "spacing": 4.0,
+                                            "children": [
+                                                ["type": "Text", "text": "Pending", "fontSize": 12.0, "color": 0xFF64748B],
+                                                ["type": "Text", "text": "\(pending)", "fontSize": 24.0, "fontWeight": "bold", "color": 0xFFF59E0B]
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ],
+                [
+                    "type": "Expanded",
+                    "children": [
+                        [
+                            "type": "Card",
+                            "color": 0xFFFFFFFF,
+                            "borderRadius": 12.0,
+                            "children": [
+                                [
+                                    "type": "Padding",
+                                    "padding_left": 14.0, "padding_right": 14.0, "padding_top": 14.0, "padding_bottom": 14.0,
+                                    "children": [
+                                        [
+                                            "type": "Column",
+                                            "spacing": 4.0,
+                                            "children": [
+                                                ["type": "Text", "text": "Efficiency Rate", "fontSize": 12.0, "color": 0xFF64748B],
+                                                ["type": "Text", "text": "\(percentInt)%", "fontSize": 24.0, "fontWeight": "bold", "color": 0xFF4F46E5]
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        scrollItems.append(metricsRow2)
+        scrollItems.append(["type": "SizedBox", "height": 16.0, "children": []])
+
+        let prioCard: [String: Any] = [
+            "type": "Card",
+            "color": 0xFFFFFFFF,
+            "borderRadius": 14.0,
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0, "padding_right": 16.0, "padding_top": 16.0, "padding_bottom": 16.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 10.0,
+                            "children": [
+                                ["type": "Text", "text": "Priority Distribution", "fontSize": 16.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                                [
+                                    "type": "Row",
+                                    "children": [
+                                        ["type": "Text", "text": "🔥 High: \(highCount)", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFFEF4444],
+                                        ["type": "Spacer"],
+                                        ["type": "Text", "text": "⚡ Medium: \(medCount)", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFFF59E0B],
+                                        ["type": "Spacer"],
+                                        ["type": "Text", "text": "🌱 Low: \(lowCount)", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFF10B981]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        scrollItems.append(prioCard)
+        scrollItems.append(["type": "SizedBox", "height": 16.0, "children": []])
+
+        let actionsCard: [String: Any] = [
+            "type": "Card",
+            "color": 0xFFFFFFFF,
+            "borderRadius": 14.0,
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0, "padding_right": 16.0, "padding_top": 16.0, "padding_bottom": 16.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 12.0,
+                            "children": [
+                                ["type": "Text", "text": "Quick Actions", "fontSize": 16.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                                [
+                                    "id": "btn_analytics_add_task",
+                                    "type": "Button",
+                                    "color": 0xFF4F46E5,
+                                    "isButton": true,
+                                    "children": [
+                                        ["type": "Text", "text": "+ Add New Task", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFFFFFFFF]
+                                    ]
+                                ],
+                                [
+                                    "id": "btn_analytics_reset_tasks",
+                                    "type": "Button",
+                                    "color": 0xFF64748B,
+                                    "isButton": true,
+                                    "children": [
+                                        ["type": "Text", "text": "Reset Sample Tasks", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFFFFFFFF]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        scrollItems.append(actionsCard)
+
+        let scrollView: [String: Any] = [
+            "type": "SingleChildScrollView",
+            "scrollDirection": "vertical",
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0,
+                    "padding_right": 16.0,
+                    "padding_top": 14.0,
+                    "padding_bottom": 24.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 0.0,
+                            "children": scrollItems
+                        ]
+                    ]
+                ]
+            ]
+        ]
+
+        var rootItems: [[String: Any]] = []
+        rootItems.append([
+            "type": "Expanded",
+            "children": [scrollView]
+        ])
+        rootItems.append(buildNavBar(selectedIndex: 1))
+
+        return [
+            "id": "root_analytics",
+            "type": "Column",
+            "children": rootItems
+        ]
+    }
+
+    private func buildSettingsTree() -> [String: Any] {
+        var scrollItems: [[String: Any]] = []
+
+        scrollItems.append(["type": "Text", "text": "App Settings & Diagnostics", "fontSize": 24.0, "fontWeight": "bold", "color": 0xFF0F172A])
+        scrollItems.append(["type": "SizedBox", "height": 16.0, "children": []])
+
+        let diffingCard: [String: Any] = [
+            "type": "Card",
+            "color": 0xFFFFFFFF,
+            "borderRadius": 14.0,
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0, "padding_right": 16.0, "padding_top": 16.0, "padding_bottom": 16.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 10.0,
+                            "children": [
+                                [
+                                    "type": "Row",
+                                    "children": [
+                                        ["type": "Text", "text": "Widget Tree Diffing", "fontSize": 16.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                                        ["type": "Spacer"],
+                                        [
+                                            "type": "Badge",
+                                            "label": "RFC-6902 Active",
+                                            "backgroundColor": 0xFF10B981,
+                                            "labelColor": 0xFFFFFFFF,
+                                            "children": []
+                                        ]
+                                    ]
+                                ],
+                                [
+                                    "type": "Text",
+                                    "text": "Neon compares widget tree revisions and sends incremental JSON patches over the HTTP bridge rather than serializing the entire tree on every keystroke.",
+                                    "fontSize": 13.0,
+                                    "color": 0xFF64748B
+                                ],
+                                ["type": "SizedBox", "height": 6.0, "children": []],
+                                [
+                                    "type": "Row",
+                                    "children": [
+                                        ["type": "Text", "text": "Incremental Diffing Enabled", "fontSize": 14.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                                        ["type": "Spacer"],
+                                        [
+                                            "id": "switch_diffing_toggle",
+                                            "type": "Switch",
+                                            "value": diffingEnabled,
+                                            "children": []
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        scrollItems.append(diffingCard)
+        scrollItems.append(["type": "SizedBox", "height": 16.0, "children": []])
+
+        var diagChildren: [[String: Any]] = [
+            ["type": "Text", "text": "Time-Travel & Diagnostics", "fontSize": 16.0, "fontWeight": "bold", "color": 0xFF0F172A],
+            [
+                "type": "Text",
+                "text": "Inspect the active navigation stack, route parameters, and state snapshot manifests.",
+                "fontSize": 13.0,
+                "color": 0xFF64748B
+            ],
+            ["type": "SizedBox", "height": 8.0, "children": []],
+            [
+                "type": "Row",
+                "spacing": 10.0,
+                "children": [
+                    [
+                        "id": "btn_export_snapshot",
+                        "type": "Button",
+                        "color": 0xFF4F46E5,
+                        "isButton": true,
+                        "children": [
+                            ["type": "Text", "text": "Export Snapshot", "fontSize": 13.0, "fontWeight": "bold", "color": 0xFFFFFFFF]
+                        ]
+                    ],
+                    [
+                        "id": "btn_reset_sample_data",
+                        "type": "Button",
+                        "color": 0xFF64748B,
+                        "isButton": true,
+                        "children": [
+                            ["type": "Text", "text": "Reset Tasks", "fontSize": 13.0, "fontWeight": "bold", "color": 0xFFFFFFFF]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        if let preview = exportedSnapshotPreview {
+            diagChildren.append(["type": "SizedBox", "height": 10.0, "children": []])
+            diagChildren.append([
+                "type": "Container",
+                "color": 0xFFF1F5F9,
+                "borderRadius": 8.0,
+                "children": [
+                    [
+                        "type": "Padding",
+                        "padding_left": 10.0, "padding_right": 10.0, "padding_top": 8.0, "padding_bottom": 8.0,
+                        "children": [
+                            ["type": "Text", "text": preview, "fontSize": 11.0, "color": 0xFF0F172A]
+                        ]
+                    ]
+                ]
+            ])
+        }
+
+        let diagCard: [String: Any] = [
+            "type": "Card",
+            "color": 0xFFFFFFFF,
+            "borderRadius": 14.0,
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0, "padding_right": 16.0, "padding_top": 16.0, "padding_bottom": 16.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 8.0,
+                            "children": diagChildren
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        scrollItems.append(diagCard)
+        scrollItems.append(["type": "SizedBox", "height": 16.0, "children": []])
+
+        let versionCard: [String: Any] = [
+            "type": "Card",
+            "color": 0xFFFFFFFF,
+            "borderRadius": 14.0,
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0, "padding_right": 16.0, "padding_top": 16.0, "padding_bottom": 16.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 6.0,
+                            "children": [
+                                ["type": "Text", "text": "Neon Framework v0.2.0", "fontSize": 15.0, "fontWeight": "bold", "color": 0xFF0F172A],
+                                ["type": "Text", "text": "Decoupled native rendering with reactive state management. Zero Flutter dependencies.", "fontSize": 13.0, "color": 0xFF64748B]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        scrollItems.append(versionCard)
+
+        let scrollView: [String: Any] = [
+            "type": "SingleChildScrollView",
+            "scrollDirection": "vertical",
+            "children": [
+                [
+                    "type": "Padding",
+                    "padding_left": 16.0,
+                    "padding_right": 16.0,
+                    "padding_top": 14.0,
+                    "padding_bottom": 24.0,
+                    "children": [
+                        [
+                            "type": "Column",
+                            "spacing": 0.0,
+                            "children": scrollItems
+                        ]
+                    ]
+                ]
+            ]
+        ]
+
+        var rootItems: [[String: Any]] = []
+        rootItems.append([
+            "type": "Expanded",
+            "children": [scrollView]
+        ])
+        rootItems.append(buildNavBar(selectedIndex: 2))
+
+        return [
+            "id": "root_settings",
+            "type": "Column",
             "children": rootItems
         ]
     }
@@ -2189,6 +3399,14 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
         }
         
         func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
+            if item.tag == 0 {
+                self.currentRoute = "/tasks"
+            } else if item.tag == 1 {
+                self.currentRoute = "/analytics"
+            } else if item.tag == 2 {
+                self.currentRoute = "/settings"
+            }
+            self.renderLocalTree()
             guard let navId = tabBar.accessibilityIdentifier else { return }
             print("👆 Tab Bar item selected: \(item.tag)")
             sendActionToDart(buttonId: navId, index: item.tag)
