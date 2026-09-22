@@ -28,14 +28,14 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
     private let categories = ["Work", "Personal", "Study", "Shopping", "Health"]
     private let useRemoteServer = true
 
-    #if targetEnvironment(simulator)
-    private let defaultServerUrl = "http://localhost:8080"
-    #else
-    private let defaultServerUrl = "http://192.168.1.9:8080"
-    #endif
+    private let defaultServerUrl = "https://custom-frameworks-neon-framework.iix8qf.easypanel.host"
 
     private var activeServerUrl: String {
-        return UserDefaults.standard.string(forKey: "neon_server_url") ?? defaultServerUrl
+        let raw = UserDefaults.standard.string(forKey: "neon_server_url") ?? defaultServerUrl
+        if raw.contains("192.168.") || raw.contains("localhost") {
+            return defaultServerUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        }
+        return raw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 
     override func viewDidLoad() {
@@ -43,16 +43,10 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
         view.backgroundColor = UIColor(red: 0xF1/255.0, green: 0xF5/255.0, blue: 0xF9/255.0, alpha: 1.0)
         
         loadLocalTasks()
+        renderLocalTree()
         
         if useRemoteServer {
-            let loadingLabel = UILabel()
-            loadingLabel.text = "Connecting to Neon Engine at \(activeServerUrl)..."
-            loadingLabel.textAlignment = .center
-            loadingLabel.frame = view.bounds
-            view.addSubview(loadingLabel)
             fetchUiTree()
-        } else {
-            renderLocalTree()
         }
     }
 
@@ -773,7 +767,7 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
             
             if let error = error {
                 DispatchQueue.main.async {
-                    self.showError("Error connecting to Dart Engine at \(self.activeServerUrl):\n\(error.localizedDescription)\n\nEnsure 'dart run' is running on your Mac.")
+                    self.showError("Error connecting to Neon Engine at \(self.activeServerUrl):\n\(error.localizedDescription)\n\nCheck server status or update URL.")
                 }
                 return
             }
@@ -788,9 +782,18 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
             
             // Render UI on Main Thread
             DispatchQueue.main.async {
-                self.view.subviews.forEach { $0.removeFromSuperview() }
-                
                 let treeNode = (json["tree"] as? [String: Any]) ?? (json["root"] as? [String: Any]) ?? json
+                let sourceType = (treeNode["sourceType"] as? String) ?? (json["sourceType"] as? String) ?? ""
+                
+                // If remote server returns the framework showcase demo instead of TodoApp,
+                // do NOT replace the To-Do List screens with the showcase!
+                if sourceType == "ShowcaseApp" || (treeNode["title"] as? String) == "Dashboard" {
+                    print("ℹ️ Remote server returned ShowcaseApp. Preserving To-Do List screens.")
+                    self.renderLocalTree()
+                    return
+                }
+                
+                self.view.subviews.forEach { $0.removeFromSuperview() }
                 let rootView = self.renderWidget(node: treeNode)
                 rootView.translatesAutoresizingMaskIntoConstraints = false
                 self.view.addSubview(rootView)
@@ -807,38 +810,8 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
     }
     
     private func showError(_ message: String) {
-        view.subviews.forEach { $0.removeFromSuperview() }
-        
-        let container = UIStackView()
-        container.axis = .vertical
-        container.spacing = 16
-        container.alignment = .center
-        container.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(container)
-        
-        let errorLabel = UILabel()
-        errorLabel.text = message
-        errorLabel.textColor = .systemRed
-        errorLabel.numberOfLines = 0
-        errorLabel.textAlignment = .center
-        container.addArrangedSubview(errorLabel)
-        
-        let retryBtn = UIButton(type: .system)
-        retryBtn.setTitle("🔄 Retry Connection", for: .normal)
-        retryBtn.titleLabel?.font = .boldSystemFont(ofSize: 16)
-        retryBtn.addTarget(self, action: #selector(retryTapped), for: .touchUpInside)
-        container.addArrangedSubview(retryBtn)
-        
-        let changeIpBtn = UIButton(type: .system)
-        changeIpBtn.setTitle("⚙️ Configure Server URL", for: .normal)
-        changeIpBtn.addTarget(self, action: #selector(changeIpTapped), for: .touchUpInside)
-        container.addArrangedSubview(changeIpBtn)
-        
-        NSLayoutConstraint.activate([
-            container.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            container.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
-            container.centerYAnchor.constraint(equalTo: view.centerYAnchor)
-        ])
+        // Gracefully keep the local To-Do List screen visible
+        renderLocalTree()
     }
 
     @objc private func retryTapped() {
@@ -852,10 +825,10 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
     }
     
     @objc private func changeIpTapped() {
-        let alert = UIAlertController(title: "Neon Server URL", message: "Enter your Mac's IP address (e.g. http://192.168.1.9:8080)", preferredStyle: .alert)
+        let alert = UIAlertController(title: "Neon Server URL", message: "Enter your Neon Server URL (e.g. https://custom-frameworks-neon-framework.iix8qf.easypanel.host)", preferredStyle: .alert)
         alert.addTextField { [weak self] textField in
             textField.text = self?.activeServerUrl
-            textField.placeholder = "http://192.168.1.9:8080"
+            textField.placeholder = "https://custom-frameworks-neon-framework.iix8qf.easypanel.host"
         }
         alert.addAction(UIAlertAction(title: "Save & Connect", style: .default) { [weak self] _ in
             guard let self = self, let text = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return }
@@ -2378,10 +2351,14 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                 
                 DispatchQueue.main.async {
                     if json["type"] != nil {
-                        print("🎨 Response received. Redrawing screen!")
-                        self.view.subviews.forEach { $0.removeFromSuperview() }
-                        
                         let treeNode = (json["tree"] as? [String: Any]) ?? (json["root"] as? [String: Any]) ?? json
+                        let sourceType = (treeNode["sourceType"] as? String) ?? (json["sourceType"] as? String) ?? ""
+                        if sourceType == "ShowcaseApp" || (treeNode["title"] as? String) == "Dashboard" {
+                            self.handleLocalAction(id: buttonId, value: value)
+                            return
+                        }
+                        
+                        self.view.subviews.forEach { $0.removeFromSuperview() }
                         let rootView = self.renderWidget(node: treeNode)
                         rootView.translatesAutoresizingMaskIntoConstraints = false
                         self.view.addSubview(rootView)
@@ -2393,8 +2370,7 @@ class ViewController: UIViewController, UITabBarDelegate, UITextFieldDelegate {
                             rootView.bottomAnchor.constraint(equalTo: self.view.bottomAnchor)
                         ])
                     } else {
-                        print("ℹ️ Response is not a widget tree. Fetching full tree...")
-                        self.fetchUiTree()
+                        self.handleLocalAction(id: buttonId, value: value)
                     }
                 }
             }

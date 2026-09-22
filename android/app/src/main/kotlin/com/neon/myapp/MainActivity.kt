@@ -21,8 +21,8 @@ class MainActivity : Activity() {
 
   companion object {
     private const val BASE_URL = "https://custom-frameworks-neon-framework.iix8qf.easypanel.host"
-    // Set to false for 100% standalone, offline-capable release APK with zero localhost dependency.
-    private const val USE_REMOTE_SERVER = false
+    // Set to true to read from the hosted default url
+    private const val USE_REMOTE_SERVER = true
   }
 
   // In-Memory & Persistent State for To-Do List App (Neon Task Studio)
@@ -47,16 +47,10 @@ class MainActivity : Activity() {
     super.onCreate(savedInstanceState)
 
     loadLocalTasks()
+    renderLocalTree()
 
     if (USE_REMOTE_SERVER) {
-      val loadingText = TextView(this)
-      loadingText.text = "Connecting to Neon Engine..."
-      loadingText.gravity = Gravity.CENTER
-      loadingText.textSize = 20f
-      setContentView(loadingText)
       fetchUiTree()
-    } else {
-      renderLocalTree()
     }
   }
 
@@ -975,16 +969,17 @@ class MainActivity : Activity() {
         val response = reader.readText()
         reader.close()
 
-        val rootNode = JSONObject(response)
-        val sourceType = rootNode.optString("sourceType")
-        // If remote server returns framework showcase instead of TodoApp, use standalone local TodoApp!
-        if (sourceType == "ShowcaseApp") {
+        val json = JSONObject(response)
+        val targetNode = json.optJSONObject("tree") ?: json.optJSONObject("root") ?: json
+        val sourceType = targetNode.optString("sourceType", json.optString("sourceType"))
+
+        if (sourceType == "ShowcaseApp" || targetNode.optString("title") == "Dashboard") {
           runOnUiThread { renderLocalTree() }
           return@thread
         }
 
         runOnUiThread {
-          val rootView = renderWidget(rootNode)
+          val rootView = renderWidget(targetNode)
           rootView.layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
@@ -1036,9 +1031,17 @@ class MainActivity : Activity() {
           val response = reader.readText()
           reader.close()
           
-          val rootNode = JSONObject(response)
+          val json = JSONObject(response)
+          val targetNode = json.optJSONObject("tree") ?: json.optJSONObject("root") ?: json
+          val sourceType = targetNode.optString("sourceType", json.optString("sourceType"))
+
+          if (sourceType == "ShowcaseApp" || targetNode.optString("title") == "Dashboard") {
+            handleLocalAction(id, value)
+            return@thread
+          }
+
           runOnUiThread {
-            val rootView = renderWidget(rootNode)
+            val rootView = renderWidget(targetNode)
             rootView.layoutParams = ViewGroup.LayoutParams(
               ViewGroup.LayoutParams.MATCH_PARENT,
               ViewGroup.LayoutParams.MATCH_PARENT
@@ -1054,8 +1057,16 @@ class MainActivity : Activity() {
     }
   }
 
-  // Recursive function to turn JSON into Android Views
   private fun renderWidget(node: JSONObject): View {
+    if (node.has("tree") && !node.has("axis")) {
+      val treeObj = node.optJSONObject("tree")
+      if (treeObj != null) return renderWidget(treeObj)
+    }
+    if (node.has("root") && !node.has("type")) {
+      val rootObj = node.optJSONObject("root")
+      if (rootObj != null) return renderWidget(rootObj)
+    }
+
     val type = node.optString("type")
     val sourceType = node.optString("sourceType")
 
